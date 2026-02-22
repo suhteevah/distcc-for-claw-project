@@ -1,0 +1,45 @@
+#!/bin/bash
+# combustion: network
+# Combustion first-boot script for openSUSE MicroOS / Leap Micro
+#
+# This runs once during the very first boot from the USB/disk.
+# It sets a root password, copies the bootstrap script, and installs
+# a oneshot service that runs it on next boot (after combustion exits).
+#
+# Combustion itself runs too early (no network yet for transactional-update),
+# so we just stage everything and let the bootstrap handle the rest.
+
+# Set root password so you can SSH in if anything goes wrong
+# (change this or remove if you don't want a root password)
+echo 'root:cnc-server-2024!' | chpasswd
+
+# Copy bootstrap script + secrets into place
+cp ./cnc-server-bootstrap.sh /root/cnc-server-bootstrap.sh
+chmod +x /root/cnc-server-bootstrap.sh
+cp ./.secrets /root/.secrets 2>/dev/null || echo "WARNING: No .secrets file found in combustion partition"
+chmod 600 /root/.secrets 2>/dev/null || true
+
+# Install a oneshot service that runs the bootstrap on first real boot
+# (after combustion is done and network is available)
+cat > /etc/systemd/system/cnc-first-boot.service << 'EOF'
+[Unit]
+Description=C&C Server Bootstrap (first boot)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/root/cnc-server-bootstrap.sh
+ConditionPathExists=!/root/.cnc-bootstrap-complete
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /root/cnc-server-bootstrap.sh
+ExecStartPost=/bin/touch /root/.cnc-bootstrap-complete
+ExecStartPost=/bin/systemctl disable cnc-first-boot.service
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable cnc-first-boot.service
