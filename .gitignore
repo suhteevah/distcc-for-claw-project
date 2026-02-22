@@ -20,9 +20,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
+.secrets
 *.key
 *.pem
 
