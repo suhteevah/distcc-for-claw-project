@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(cmd /c \"dir C:\\\\tmp\\\\openclaw\\\\*.log /o-d /b\")",
+      "Bash(cmd /c \"tasklist /fi \"\"imagename eq node.exe\"\" /fo csv 2>nul | findstr /i \"\"openclaw\"\"\")",
+      "Bash(cmd /c \"schtasks /query /tn \"\"OpenClaw Gateway\"\" /fo list 2>nul\")",
+      "Bash(powershell -Command:*)",
+      "Bash(docker run:*)",
+      "WebFetch(domain:download.opensuse.org)",
+      "WebFetch(domain:get.opensuse.org)"
+    ]
+  }
+}
