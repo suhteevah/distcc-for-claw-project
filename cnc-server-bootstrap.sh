@@ -35,9 +35,8 @@ set -euo pipefail
 # =============================================================================
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-# Edit these before flashing. No prompts — what you see is what runs.
+# No prompts — what you see is what runs.
 
-TS_AUTH_KEY="tskey-auth-kVHj9zhNNB11CNTRL-SeAkaSdz6e7quGLGcks9e7JUbherSdLk"
 TS_HOSTNAME="cnc-server"
 
 # LAN Ollama servers (Tailscale MagicDNS hostnames)
@@ -45,14 +44,29 @@ TS_HOSTNAME="cnc-server"
 LAN_OLLAMA_PRIMARY="http://satibook:11434"
 LAN_OLLAMA_FALLBACK="http://kokonoe:11434"
 
-# Anthropic API key — leave empty to skip (Ollama handles inference)
-ANTHROPIC_API_KEY=""
-
 # Compile jobs — empty = auto-detect (cores - 2, minimum 1)
 MAX_JOBS=""
 
-# Note: Tailscale pre-auth keys expire (default 90 days).
-# Generate a new one at: https://login.tailscale.com/admin/settings/keys
+# ── Secrets (not committed to git) ───────────────────────────────────────────
+# Source .secrets from the same directory as this script, or from /root/.secrets
+# Contains: TS_AUTH_KEY, ANTHROPIC_API_KEY
+# See .secrets.example for the template.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for secrets_path in "${SCRIPT_DIR}/.secrets" /root/.secrets /etc/cnc-secrets; do
+    if [ -f "$secrets_path" ]; then
+        source "$secrets_path"
+        break
+    fi
+done
+
+# Validate Tailscale key
+TS_AUTH_KEY="${TS_AUTH_KEY:-}"
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+if [ -z "$TS_AUTH_KEY" ]; then
+    echo "FATAL: No TS_AUTH_KEY found. Create .secrets file from .secrets.example"
+    echo "  cp .secrets.example .secrets && \$EDITOR .secrets"
+    exit 1
+fi
 
 # ── Colors & helpers ──────────────────────────────────────────────────────────
 

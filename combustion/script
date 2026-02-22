@@ -13,9 +13,11 @@
 # (change this or remove if you don't want a root password)
 echo 'root:cnc-server-2024!' | chpasswd
 
-# Copy bootstrap script into place
+# Copy bootstrap script + secrets into place
 cp ./cnc-server-bootstrap.sh /root/cnc-server-bootstrap.sh
 chmod +x /root/cnc-server-bootstrap.sh
+cp ./.secrets /root/.secrets 2>/dev/null || echo "WARNING: No .secrets file found in combustion partition"
+chmod 600 /root/.secrets 2>/dev/null || true
 
 # Install a oneshot service that runs the bootstrap on first real boot
 # (after combustion is done and network is available)
