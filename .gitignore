@@ -24,8 +24,13 @@ Thumbs.db
 .env
 .env.local
 .secrets
+.secrets.local
 *.key
 *.pem
+
+# Local session notes (contain secrets from previous conversations)
+session-handoff.md
+session-handoff.md.local
 
 # Windows reserved device names (cause git add failures)
 nul
