@@ -122,7 +122,7 @@ Secrets are in `.secrets` (gitignored). The bootstrap sources this file.
 
 ```bash
 # .secrets (not in git — see .secrets.example for template)
-TS_AUTH_KEY="tskey-auth-kVHj9zhNNB11CNTRL-SeAkaSdz6e7quGLGcks9e7JUbherSdLk"
+TS_AUTH_KEY="tskey-auth-REDACTED"  # actual key in .secrets (gitignored)
 ANTHROPIC_API_KEY=""  # empty — using Ollama only
 ```
 
