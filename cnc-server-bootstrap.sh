@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # =============================================================================
-# C&C Server Bootstrap — openSUSE MicroOS
+# C&C Server Bootstrap — openSUSE MicroOS / Leap Micro
 # Central orchestrator for Claude Code agent mesh + icecream distributed builds
 #
-# Why MicroOS:
+# Why MicroOS/Leap Micro:
 #   - Atomic/immutable OS (btrfs transactional updates, auto-rollback)
 #   - Security-hardened (AppArmor enforcing, read-only root, TPM2 FDE)
 #   - openSUSE invented icecream — first-class native support
@@ -25,7 +25,7 @@ set -euo pipefail
 #   - Systemd services for everything (auto-start on boot)
 #
 # Usage:
-#   # On a fresh openSUSE MicroOS install (or from live disk):
+#   # Interactive (SSH into a fresh install):
 #   curl -sL https://raw.githubusercontent.com/suhteevah/claw-setup/main/cnc-server-bootstrap.sh | bash
 #
 #   # Or download and run:
@@ -33,8 +33,20 @@ set -euo pipefail
 #   chmod +x cnc-server-bootstrap.sh
 #   sudo ./cnc-server-bootstrap.sh
 #
+#   # Non-interactive (combustion / first-boot / unattended):
+#   NONINTERACTIVE=1 TS_AUTH_KEY="tskey-auth-..." ANTHROPIC_API_KEY="sk-ant-..." \
+#     bash cnc-server-bootstrap.sh
+#
+# Environment variables (for non-interactive / combustion use):
+#   NONINTERACTIVE=1          - Skip all interactive prompts, use defaults
+#   TS_HOSTNAME=cnc-server    - Tailscale hostname (default: cnc-server)
+#   TS_AUTH_KEY=tskey-auth-.. - Tailscale pre-auth key (required for unattended)
+#   ANTHROPIC_API_KEY=sk-ant- - Anthropic API key (required for agent)
+#   MAX_JOBS=                 - Max compile jobs (default: auto-detect)
+#   LAN_OLLAMA_IP=            - LAN Ollama server IP (default: 192.168.10.242)
+#
 # Requirements:
-#   - openSUSE MicroOS (fresh install, SSH enabled)
+#   - openSUSE MicroOS or Leap Micro (fresh install, SSH enabled)
 #   - Internet connection
 #   - Anthropic API key (get one at https://console.anthropic.com)
 #   - (Optional) Discrete GPU for local LLM inference (defaults to LAN Ollama at 192.168.10.242)
@@ -59,6 +71,56 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 fail()  { echo -e "${RED}[FAIL]${NC} $1"; }
 phase() { echo -e "\n${BOLD}${YELLOW}=== $1 ===${NC}\n"; }
 
+# ── Non-interactive mode ──────────────────────────────────────────────────────
+# When NONINTERACTIVE=1 (e.g. combustion first-boot), all read prompts use
+# defaults or environment variables instead of waiting for stdin.
+# Auto-detected when stdin is not a terminal (combustion, piped input, etc.)
+NONINTERACTIVE="${NONINTERACTIVE:-0}"
+if [ ! -t 0 ] && [ "$NONINTERACTIVE" = "0" ]; then
+    info "No terminal detected (combustion/piped?) — enabling non-interactive mode"
+    NONINTERACTIVE=1
+fi
+
+# Helper: prompt the user, or use default in non-interactive mode.
+#   prompt_or_default VARNAME "Prompt text" "default_value"
+prompt_or_default() {
+    local varname="$1" prompt="$2" default="$3"
+    if [ "$NONINTERACTIVE" = "1" ]; then
+        # Use existing env var if set, otherwise use the default
+        eval "$varname=\"\${$varname:-$default}\""
+        eval "info \"Using $varname=\$$varname (non-interactive)\""
+    else
+        local current_val
+        eval "current_val=\"\${$varname:-}\""
+        if [ -n "$current_val" ]; then
+            # Env var already set — use it as the default shown in prompt
+            read -p "$prompt [$current_val]: " input
+            eval "$varname=\"\${input:-$current_val}\""
+        else
+            read -p "$prompt [$default]: " input
+            eval "$varname=\"\${input:-$default}\""
+        fi
+    fi
+}
+
+# Helper: ask yes/no, or auto-accept in non-interactive mode.
+#   confirm_or_default "Prompt" "Y" → returns 0 if yes
+#   confirm_or_default "Prompt" "N" → returns 0 if yes
+confirm_or_default() {
+    local prompt="$1" default="${2:-Y}"
+    if [ "$NONINTERACTIVE" = "1" ]; then
+        if [[ "${default,,}" == "y" ]]; then
+            return 0  # auto-accept
+        else
+            return 1  # auto-reject
+        fi
+    fi
+    local reply
+    read -p "$prompt " reply
+    reply="${reply:-$default}"
+    [[ "${reply,,}" == "y" ]]
+}
+
 # ── Root check ────────────────────────────────────────────────────────────────
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -75,17 +137,21 @@ fi
 
 source /etc/os-release
 
-if [[ "${ID:-}" != "opensuse-microos" && "${ID:-}" != "opensuse-tumbleweed-microos" ]]; then
-    warn "Expected openSUSE MicroOS but found: ${PRETTY_NAME:-unknown}"
-    echo ""
-    echo "This script is designed for openSUSE MicroOS."
-    echo "It may work on Tumbleweed but is untested."
-    read -p "Continue anyway? [y/N] " FORCE_CONTINUE
-    if [[ "${FORCE_CONTINUE,,}" != "y" ]]; then
-        echo "Aborted."
-        exit 1
-    fi
-fi
+case "${ID:-}" in
+    opensuse-microos|opensuse-tumbleweed-microos|opensuse-leap-micro|sle-micro)
+        ok "Detected: ${PRETTY_NAME:-$ID}"
+        ;;
+    *)
+        warn "Expected openSUSE MicroOS/Leap Micro but found: ${PRETTY_NAME:-unknown}"
+        echo ""
+        echo "This script is designed for openSUSE MicroOS and Leap Micro."
+        echo "It may work on Tumbleweed but is untested."
+        if ! confirm_or_default "Continue anyway? [y/N]" "N"; then
+            echo "Aborted."
+            exit 1
+        fi
+        ;;
+esac
 
 # ── State file (for re-run after reboot) ──────────────────────────────────────
 
@@ -100,7 +166,9 @@ fi
 save_state() {
     cat > "$STATE_FILE" << EOF
 CURRENT_PHASE=$1
+NONINTERACTIVE="${NONINTERACTIVE:-0}"
 TS_HOSTNAME="${TS_HOSTNAME:-cnc-server}"
+TS_AUTH_KEY="${TS_AUTH_KEY:-}"
 MAX_JOBS="${MAX_JOBS:-}"
 LAN_OLLAMA_IP="${LAN_OLLAMA_IP:-}"
 LAN_OLLAMA_URL="${LAN_OLLAMA_URL:-}"
@@ -126,18 +194,27 @@ echo -e "${NC}"
 # ── Configuration prompts (only on first run) ─────────────────────────────────
 
 if [ "$CURRENT_PHASE" -le 1 ]; then
-    read -p "Tailscale hostname for this server [cnc-server]: " TS_HOSTNAME
-    TS_HOSTNAME="${TS_HOSTNAME:-cnc-server}"
+    prompt_or_default TS_HOSTNAME "Tailscale hostname for this server" "cnc-server"
 
-    read -p "Max compile jobs (press Enter for auto-detect): " MAX_JOBS
-    if [ -z "$MAX_JOBS" ]; then
-        TOTAL_CORES=$(nproc)
-        MAX_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : 1 ))
-        info "Auto-detected: ${TOTAL_CORES} cores, reserving 2 → ${MAX_JOBS} compile jobs"
+    # MAX_JOBS: use env var if set, otherwise auto-detect
+    if [ -z "${MAX_JOBS:-}" ]; then
+        if [ "$NONINTERACTIVE" = "1" ]; then
+            TOTAL_CORES=$(nproc)
+            MAX_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : 1 ))
+            info "Auto-detected: ${TOTAL_CORES} cores, reserving 2 → ${MAX_JOBS} compile jobs"
+        else
+            read -p "Max compile jobs (press Enter for auto-detect): " MAX_JOBS
+            if [ -z "$MAX_JOBS" ]; then
+                TOTAL_CORES=$(nproc)
+                MAX_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : 1 ))
+                info "Auto-detected: ${TOTAL_CORES} cores, reserving 2 → ${MAX_JOBS} compile jobs"
+            fi
+        fi
+    else
+        info "Using MAX_JOBS=${MAX_JOBS}"
     fi
 
-    read -p "LAN Ollama server IP [192.168.10.242]: " LAN_OLLAMA_IP
-    LAN_OLLAMA_IP="${LAN_OLLAMA_IP:-192.168.10.242}"
+    prompt_or_default LAN_OLLAMA_IP "LAN Ollama server IP" "192.168.10.242"
     LAN_OLLAMA_URL="http://${LAN_OLLAMA_IP}:11434"
 
     GPU_NAME=""
@@ -154,8 +231,7 @@ if [ "$CURRENT_PHASE" -le 1 ]; then
     info "Compile jobs: ${MAX_JOBS}"
     [ -n "$LAN_OLLAMA_URL" ] && info "LAN Ollama:   ${LAN_OLLAMA_URL}"
     echo ""
-    read -p "Continue? [Y/n] " CONFIRM
-    if [[ "${CONFIRM,,}" == "n" ]]; then
+    if ! confirm_or_default "Continue? [Y/n]" "Y"; then
         echo "Aborted."
         exit 0
     fi
@@ -295,15 +371,33 @@ if [ "$CURRENT_PHASE" -le 2 ]; then
     # Tailscale
     systemctl enable --now tailscaled
 
-    echo ""
-    echo -e "${BOLD}>>> Tailscale needs authentication.${NC}"
-    echo -e "    Run: ${CYAN}sudo tailscale up --hostname ${TS_HOSTNAME}${NC}"
-    echo "    Then follow the URL in your browser to authenticate."
-    echo ""
-    read -p "Press Enter after Tailscale is authenticated... "
+    if [ -n "${TS_AUTH_KEY:-}" ]; then
+        # Non-interactive: use pre-auth key
+        info "Authenticating Tailscale with pre-auth key..."
+        tailscale up --hostname "${TS_HOSTNAME}" --authkey "${TS_AUTH_KEY}" && \
+            ok "Tailscale authenticated via authkey" || \
+            warn "Tailscale authkey authentication failed — may need manual auth later"
+    elif [ "$NONINTERACTIVE" = "1" ]; then
+        # Non-interactive but no auth key — start tailscale, skip auth
+        warn "No TS_AUTH_KEY provided in non-interactive mode."
+        warn "Tailscale will need manual authentication after boot."
+        warn "  Fix: tailscale up --hostname ${TS_HOSTNAME}"
+        tailscale up --hostname "${TS_HOSTNAME}" --timeout 5s 2>/dev/null || true
+    else
+        echo ""
+        echo -e "${BOLD}>>> Tailscale needs authentication.${NC}"
+        echo -e "    Run: ${CYAN}sudo tailscale up --hostname ${TS_HOSTNAME}${NC}"
+        echo "    Then follow the URL in your browser to authenticate."
+        echo ""
+        read -p "Press Enter after Tailscale is authenticated... "
+    fi
 
-    TS_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
-    ok "Tailscale active — IP: ${TS_IP}"
+    TS_IP=$(tailscale ip -4 2>/dev/null || echo "not connected")
+    if [ "$TS_IP" != "not connected" ]; then
+        ok "Tailscale active — IP: ${TS_IP}"
+    else
+        warn "Tailscale not connected yet — IP will be available after auth"
+    fi
 
     save_state 3
 fi
@@ -384,8 +478,7 @@ if [ "$CURRENT_PHASE" -le 4 ]; then
             GPU_NAME=$(lspci | grep -i nvidia | head -1 | sed 's/.*: //')
             GPU_VENDOR="NVIDIA"
             GPU_VRAM_GB=2  # conservative guess
-            read -p "Continue without NVIDIA drivers? [Y/n] " SKIP_NV
-            if [[ "${SKIP_NV,,}" == "n" ]]; then
+            if ! confirm_or_default "Continue without NVIDIA drivers? [Y/n]" "Y"; then
                 save_state 4
                 echo "Install the drivers, reboot, and re-run this script."
                 exit 0
@@ -416,37 +509,46 @@ if [ "$CURRENT_PHASE" -le 4 ]; then
             OLLAMA_INSTALLED=0
             OLLAMA_MODEL=""
         else
-            echo "  No discrete GPU and no LAN Ollama configured."
-            echo "  Options:"
-            echo "    1) Skip local Ollama — use only remote API (anthropic/claude-sonnet-4-5)"
-            echo "    2) Install Ollama anyway (CPU-only, will be slow)"
-            echo "    3) Specify a LAN Ollama server now"
-            echo ""
-            read -p "  Choice [1/2/3]: " OLLAMA_CHOICE
-            case "${OLLAMA_CHOICE}" in
-                2)
-                    info "Installing Ollama for CPU-only inference..."
-                    INSTALL_LOCAL_OLLAMA=1
-                    ;;
-                3)
-                    read -p "  LAN Ollama IP (e.g. 192.168.10.242): " LAN_OLLAMA_IP
-                    LAN_OLLAMA_URL="http://${LAN_OLLAMA_IP}:11434"
-                    ok "Will use LAN Ollama at ${LAN_OLLAMA_URL}"
-                    SELECTED_MODEL="qwen2.5-coder:7b"
-                    SIDECAR_MODEL=""
-                    OLLAMA_INSTALLED=0
-                    OLLAMA_MODEL=""
-                    INSTALL_LOCAL_OLLAMA=0
-                    ;;
-                *)
-                    info "Skipping local Ollama. Will use anthropic/claude-sonnet-4-5 as primary."
-                    SELECTED_MODEL=""
-                    SIDECAR_MODEL=""
-                    OLLAMA_INSTALLED=0
-                    OLLAMA_MODEL=""
-                    INSTALL_LOCAL_OLLAMA=0
-                    ;;
-            esac
+            if [ "$NONINTERACTIVE" = "1" ]; then
+                info "No discrete GPU and no LAN Ollama — skipping Ollama (non-interactive)"
+                SELECTED_MODEL=""
+                SIDECAR_MODEL=""
+                OLLAMA_INSTALLED=0
+                OLLAMA_MODEL=""
+                INSTALL_LOCAL_OLLAMA=0
+            else
+                echo "  No discrete GPU and no LAN Ollama configured."
+                echo "  Options:"
+                echo "    1) Skip local Ollama — use only remote API (anthropic/claude-sonnet-4-5)"
+                echo "    2) Install Ollama anyway (CPU-only, will be slow)"
+                echo "    3) Specify a LAN Ollama server now"
+                echo ""
+                read -p "  Choice [1/2/3]: " OLLAMA_CHOICE
+                case "${OLLAMA_CHOICE}" in
+                    2)
+                        info "Installing Ollama for CPU-only inference..."
+                        INSTALL_LOCAL_OLLAMA=1
+                        ;;
+                    3)
+                        read -p "  LAN Ollama IP (e.g. 192.168.10.242): " LAN_OLLAMA_IP
+                        LAN_OLLAMA_URL="http://${LAN_OLLAMA_IP}:11434"
+                        ok "Will use LAN Ollama at ${LAN_OLLAMA_URL}"
+                        SELECTED_MODEL="qwen2.5-coder:7b"
+                        SIDECAR_MODEL=""
+                        OLLAMA_INSTALLED=0
+                        OLLAMA_MODEL=""
+                        INSTALL_LOCAL_OLLAMA=0
+                        ;;
+                    *)
+                        info "Skipping local Ollama. Will use anthropic/claude-sonnet-4-5 as primary."
+                        SELECTED_MODEL=""
+                        SIDECAR_MODEL=""
+                        OLLAMA_INSTALLED=0
+                        OLLAMA_MODEL=""
+                        INSTALL_LOCAL_OLLAMA=0
+                        ;;
+                esac
+            fi
         fi
     else
         INSTALL_LOCAL_OLLAMA=1
@@ -557,27 +659,39 @@ if [ "$CURRENT_PHASE" -le 6 ]; then
     chmod 700 /etc/claude
 
     if [ ! -f /etc/claude/api-key ]; then
-        echo ""
-        echo -e "${BOLD}Anthropic API Key Configuration${NC}"
-        echo ""
-        echo "  ${YELLOW}IMPORTANT: Headless servers REQUIRE an API key.${NC}"
-        echo "  The browser-based 'claude auth login' does NOT work over SSH."
-        echo ""
-        echo "  Get a key from:"
-        echo "    - Anthropic Console: https://console.anthropic.com/settings/keys"
-        echo "    - Claude Max sub:    https://claude.ai/settings/api"
-        echo ""
-        read -sp "Anthropic API Key (sk-ant-...): " API_KEY
-        echo ""
-
-        if [ -n "$API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY=${API_KEY}" > /etc/claude/api-key
-            ok "API key saved to /etc/claude/api-key"
-        else
-            # Create empty file so systemd EnvironmentFile doesn't crash
+        # Check if API key was provided via environment variable
+        if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" > /etc/claude/api-key
+            ok "API key saved from environment variable"
+        elif [ "$NONINTERACTIVE" = "1" ]; then
+            # Non-interactive but no key — create placeholder
             touch /etc/claude/api-key
-            warn "No API key provided. You MUST provide one before the agent can work."
-            echo "  Fix later: echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
+            warn "No ANTHROPIC_API_KEY in environment (non-interactive mode)."
+            warn "Agent will not work until key is provided."
+            warn "  Fix: echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
+        else
+            echo ""
+            echo -e "${BOLD}Anthropic API Key Configuration${NC}"
+            echo ""
+            echo "  ${YELLOW}IMPORTANT: Headless servers REQUIRE an API key.${NC}"
+            echo "  The browser-based 'claude auth login' does NOT work over SSH."
+            echo ""
+            echo "  Get a key from:"
+            echo "    - Anthropic Console: https://console.anthropic.com/settings/keys"
+            echo "    - Claude Max sub:    https://claude.ai/settings/api"
+            echo ""
+            read -sp "Anthropic API Key (sk-ant-...): " API_KEY
+            echo ""
+
+            if [ -n "$API_KEY" ]; then
+                echo "ANTHROPIC_API_KEY=${API_KEY}" > /etc/claude/api-key
+                ok "API key saved to /etc/claude/api-key"
+            else
+                # Create empty file so systemd EnvironmentFile doesn't crash
+                touch /etc/claude/api-key
+                warn "No API key provided. You MUST provide one before the agent can work."
+                echo "  Fix later: echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
+            fi
         fi
 
         chmod 600 /etc/claude/api-key
@@ -605,45 +719,48 @@ if [ "$CURRENT_PHASE" -le 6 ]; then
             warn "Claude Code test call failed. The API key may be invalid."
             echo "  You can fix this later by editing /etc/claude/api-key"
             echo "  Format: ANTHROPIC_API_KEY=sk-ant-..."
-            read -p "  Continue anyway? [Y/n] " AUTH_CONTINUE
-            if [[ "${AUTH_CONTINUE,,}" == "n" ]]; then
+            if ! confirm_or_default "  Continue anyway? [Y/n]" "Y"; then
                 exit 1
             fi
         fi
     else
         # No API key — they need one for headless operation
         warn "No API key configured. Headless agents REQUIRE an API key."
-        echo ""
-        echo "  On a headless server, 'claude auth login' does NOT work reliably."
-        echo "  The OAuth flow requires pasting a return code, which fails over SSH."
-        echo ""
-        echo "  You have two options:"
-        echo "    1) Provide an Anthropic API key now (recommended)"
-        echo "       Get one at: https://console.anthropic.com/settings/keys"
-        echo ""
-        echo "    2) Use a Claude Max subscription key"
-        echo "       Get one at: https://claude.ai/settings/api"
-        echo ""
-        read -sp "  Paste your API key (sk-ant-...): " LATE_API_KEY
-        echo ""
-        if [ -n "$LATE_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY=${LATE_API_KEY}" > /etc/claude/api-key
-            chmod 600 /etc/claude/api-key
-            chown claude-agent:claude-agent /etc/claude/api-key
-            ok "API key saved"
-
-            info "Testing authentication..."
-            if sudo -u claude-agent bash -c "source /etc/claude/api-key && /usr/local/bin/claude -p 'respond with exactly: OK' --output-format text" 2>/dev/null | grep -qi "OK"; then
-                ok "Claude Code authenticated successfully"
-            else
-                warn "Test call failed — key may be invalid, but continuing."
-            fi
+        if [ "$NONINTERACTIVE" = "1" ]; then
+            warn "Provide ANTHROPIC_API_KEY env var or fix after boot:"
+            warn "  echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
         else
-            fail "No API key provided. The agent service will not work without one."
-            echo "  Fix later: echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
-            read -p "  Continue anyway? [Y/n] " SKIP_AUTH
-            if [[ "${SKIP_AUTH,,}" == "n" ]]; then
-                exit 1
+            echo ""
+            echo "  On a headless server, 'claude auth login' does NOT work reliably."
+            echo "  The OAuth flow requires pasting a return code, which fails over SSH."
+            echo ""
+            echo "  You have two options:"
+            echo "    1) Provide an Anthropic API key now (recommended)"
+            echo "       Get one at: https://console.anthropic.com/settings/keys"
+            echo ""
+            echo "    2) Use a Claude Max subscription key"
+            echo "       Get one at: https://claude.ai/settings/api"
+            echo ""
+            read -sp "  Paste your API key (sk-ant-...): " LATE_API_KEY
+            echo ""
+            if [ -n "$LATE_API_KEY" ]; then
+                echo "ANTHROPIC_API_KEY=${LATE_API_KEY}" > /etc/claude/api-key
+                chmod 600 /etc/claude/api-key
+                chown claude-agent:claude-agent /etc/claude/api-key
+                ok "API key saved"
+
+                info "Testing authentication..."
+                if sudo -u claude-agent bash -c "source /etc/claude/api-key && /usr/local/bin/claude -p 'respond with exactly: OK' --output-format text" 2>/dev/null | grep -qi "OK"; then
+                    ok "Claude Code authenticated successfully"
+                else
+                    warn "Test call failed — key may be invalid, but continuing."
+                fi
+            else
+                fail "No API key provided. The agent service will not work without one."
+                echo "  Fix later: echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
+                if ! confirm_or_default "  Continue anyway? [Y/n]" "Y"; then
+                    exit 1
+                fi
             fi
         fi
     fi
