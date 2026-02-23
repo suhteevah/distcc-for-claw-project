@@ -1,32 +1,114 @@
 #!/bin/bash
 # combustion: network
+# =============================================================================
 # Combustion first-boot script for openSUSE MicroOS / Leap Micro
 #
-# This runs once during the very first boot from the USB/disk.
-# It sets a root password, copies the bootstrap script, and installs
-# a oneshot service that runs it on next boot (after combustion exits).
+# ONE-SHOT: WiFi + SSH + root password + Tailscale + bootstrap staging
+# After this runs, the machine is reachable via Tailscale and WiFi SSH.
+# The 10-phase bootstrap runs automatically on next boot via systemd oneshot.
 #
-# Combustion itself runs too early (no network yet for transactional-update),
-# so we just stage everything and let the bootstrap handle the rest.
+# All secrets are sourced from .secrets (on the combustion partition).
+# =============================================================================
 
-# Set root password so you can SSH in if anything goes wrong.
-# Reads ROOT_PASSWORD from .secrets if present, otherwise uses a default.
-# Change the default or set ROOT_PASSWORD in .secrets for production.
+exec > >(exec tee -a /dev/tty0) 2>&1
+echo ">>> Combustion starting..."
+
+# ── Source secrets ───────────────────────────────────────────────────────────
 if [ -f ./.secrets ]; then
     source ./.secrets
+    echo ">>> Loaded .secrets"
+else
+    echo ">>> FATAL: No .secrets file found on combustion partition!"
+    echo ">>> Copy .secrets.example to .secrets and fill in values."
+    exit 1
 fi
+
+# ── Root password ────────────────────────────────────────────────────────────
 ROOT_PW="${ROOT_PASSWORD:-changeme-on-first-login}"
 echo "root:${ROOT_PW}" | chpasswd
+echo ">>> Root password set"
 unset ROOT_PW
 
-# Copy bootstrap script + secrets into place
+# ── WiFi configuration ──────────────────────────────────────────────────────
+if [ -n "${WIFI_SSID:-}" ] && [ -n "${WIFI_PASSWORD:-}" ]; then
+    umask 077
+    mkdir -p /etc/NetworkManager/system-connections/
+    cat > /etc/NetworkManager/system-connections/home-wifi.nmconnection << WIFIEOF
+[connection]
+id=home-wifi
+type=wifi
+autoconnect=true
+
+[wifi]
+ssid=${WIFI_SSID}
+mode=infrastructure
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=${WIFI_PASSWORD}
+
+[ipv4]
+method=auto
+WIFIEOF
+    chmod 600 /etc/NetworkManager/system-connections/home-wifi.nmconnection
+    echo ">>> WiFi configured for SSID: ${WIFI_SSID}"
+else
+    echo ">>> WARNING: No WIFI_SSID/WIFI_PASSWORD in .secrets, skipping WiFi"
+fi
+
+# ── SSH setup ────────────────────────────────────────────────────────────────
+# Enable sshd
+systemctl enable sshd.service
+echo ">>> SSH enabled"
+
+# Configure root login and password auth
+mkdir -p /etc/ssh/sshd_config.d/
+cat > /etc/ssh/sshd_config.d/10-cnc-server.conf << 'SSHEOF'
+PermitRootLogin yes
+PasswordAuthentication yes
+SSHEOF
+echo ">>> SSH root login + password auth enabled"
+
+# Add SSH authorized keys
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+for var in $(compgen -v | grep '^SSH_PUBKEY'); do
+    eval "key=\$$var"
+    if [ -n "$key" ]; then
+        echo "$key" >> /root/.ssh/authorized_keys
+    fi
+done
+chmod 600 /root/.ssh/authorized_keys
+KEY_COUNT=$(wc -l < /root/.ssh/authorized_keys)
+echo ">>> Added ${KEY_COUNT} SSH authorized key(s)"
+
+# ── Copy bootstrap + secrets to /root/ ───────────────────────────────────────
 cp ./cnc-server-bootstrap.sh /root/cnc-server-bootstrap.sh
 chmod +x /root/cnc-server-bootstrap.sh
-cp ./.secrets /root/.secrets 2>/dev/null || echo "WARNING: No .secrets file found in combustion partition"
+cp ./.secrets /root/.secrets 2>/dev/null
 chmod 600 /root/.secrets 2>/dev/null || true
+echo ">>> Bootstrap script + secrets staged to /root/"
 
-# Install a oneshot service that runs the bootstrap on first real boot
-# (after combustion is done and network is available)
+# ── Install Tailscale (if we have network) ───────────────────────────────────
+# Try to install Tailscale now. If network isn't up yet, the bootstrap will
+# handle it on next boot.
+if [ -n "${TS_AUTH_KEY:-}" ]; then
+    echo ">>> Attempting Tailscale install..."
+    if curl -fsSL https://tailscale.com/install.sh 2>/dev/null | sh 2>/dev/null; then
+        systemctl enable --now tailscaled 2>/dev/null
+        sleep 3
+        tailscale up --hostname "cnc-server" --authkey "${TS_AUTH_KEY}" 2>/dev/null && \
+            echo ">>> Tailscale connected as cnc-server" || \
+            echo ">>> Tailscale auth deferred to bootstrap (network may not be ready)"
+    else
+        echo ">>> Tailscale install deferred to bootstrap (no network in combustion)"
+    fi
+else
+    echo ">>> WARNING: No TS_AUTH_KEY in .secrets, skipping Tailscale"
+fi
+
+# ── Install bootstrap oneshot service ────────────────────────────────────────
 cat > /etc/systemd/system/cnc-first-boot.service << 'EOF'
 [Unit]
 Description=C&C Server Bootstrap (first boot)
@@ -49,3 +131,18 @@ WantedBy=multi-user.target
 EOF
 
 systemctl enable cnc-first-boot.service
+echo ">>> Bootstrap oneshot service installed"
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+echo ">>> ============================================"
+echo ">>> Combustion COMPLETE"
+echo ">>> Root password: set from .secrets"
+echo ">>> WiFi: ${WIFI_SSID:-NOT CONFIGURED}"
+echo ">>> SSH: enabled (root login + password + keys)"
+echo ">>> Tailscale: attempted (may finish in bootstrap)"
+echo ">>> Bootstrap: staged at /root/cnc-server-bootstrap.sh"
+echo ">>>   Will auto-run on next boot via cnc-first-boot.service"
+echo ">>> ============================================"
+
+echo "Configured with combustion" > /etc/issue.d/combustion
