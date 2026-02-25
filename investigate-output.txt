@@ -1,0 +1,222 @@
+=== Current kernel and uptime ===
+6.12.0-160000.5-default
+ 09:32:27  up   0:00,  1 user,  load average: 0.17, 0.07, 0.02
+
+=== Check if USB WiFi adapter is plugged in ===
+Bus 003 Device 003: ID 2357:0120 TP-Link Archer T2U PLUS [RTL8821AU]
+Full lsusb:
+Bus 002 Device 002: ID 8087:8001 Intel Corp. Integrated Hub
+Bus 002 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 002: ID 8087:8009 Intel Corp. 
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 004 Device 002: ID 0781:5597 SanDisk Corp. Cruzer Glide 3.0
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 003: ID 2357:0120 TP-Link Archer T2U PLUS [RTL8821AU]
+Bus 003 Device 002: ID 046d:c52b Logitech, Inc. Unifying Receiver
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+
+=== Check dmesg for crash info from previous boot ===
+Feb 23 09:07:47 localhost.localdomain kernel: BUG: kernel NULL pointer dereference, address: 0000000000000000
+Feb 23 09:07:48 localhost.localdomain kernel: Oops: Oops: 0000 [#1] SMP PTI
+Feb 23 09:07:48 localhost.localdomain kernel: CPU: 1 UID: 0 PID: 25596 Comm: insmod Tainted: G        W  OE      n 6.12.0-160000.5-default #1 PREEMPT(voluntary) SLFO-1.2 c2fdc1668d70ca8945ee3ffae074edb3f4c70a6a
+Feb 23 09:07:48 localhost.localdomain kernel: RIP: 0010:device_links_driver_bound+0x163/0x2d0
+Feb 23 09:07:48 localhost.localdomain kernel:  ? page_fault_oops+0x136/0x2c0
+Feb 23 09:07:48 localhost.localdomain kernel:  ? exc_page_fault+0x73/0x160
+Feb 23 09:07:48 localhost.localdomain kernel:  ? asm_exc_page_fault+0x26/0x30
+Feb 23 09:07:48 localhost.localdomain kernel:  ? device_links_driver_bound+0x163/0x2d0
+Feb 23 09:07:48 localhost.localdomain kernel:  ? exc_page_fault+0x73/0x160
+Feb 23 09:07:48 localhost.localdomain kernel: BUG: unable to handle page fault for address: 000000000001448a
+Feb 23 09:07:48 localhost.localdomain kernel: RIP: 0010:device_links_driver_bound+0x163/0x2d0
+Feb 23 09:07:49 localhost.localdomain kernel: Oops: Oops: 0000 [#2] SMP PTI
+Feb 23 09:07:49 localhost.localdomain kernel: CPU: 3 UID: 0 PID: 1487 Comm: NetworkManager Tainted: G      D W  OE      n 6.12.0-160000.5-default #1 PREEMPT(voluntary) SLFO-1.2 c2fdc1668d70ca8945ee3ffae074edb3f4c70a6a
+Feb 23 09:07:49 localhost.localdomain kernel:  ? page_fault_oops+0x136/0x2c0
+Feb 23 09:07:49 localhost.localdomain kernel:  ? exc_page_fault+0x73/0x160
+Feb 23 09:07:49 localhost.localdomain kernel:  ? asm_exc_page_fault+0x26/0x30
+Feb 23 09:07:49 localhost.localdomain kernel:  ? handle_mm_fault+0xb9/0x2e0
+Feb 23 09:07:49 localhost.localdomain kernel:  ? do_user_addr_fault+0x176/0x670
+Feb 23 09:07:49 localhost.localdomain kernel:  ? exc_page_fault+0x73/0x160
+Feb 23 09:07:49 localhost.localdomain kernel: RIP: 0010:device_links_driver_bound+0x163/0x2d0
+
+=== Current dmesg ===
+[    2.435733] [      C2] nouveau 0000:01:00.0: bus: MMIO write of 8000012c FAULT at 10eb14 [ PRIVRING ]
+[    2.455655] [     T35] usb 3-9: New USB device found, idVendor=2357, idProduct=0120, bcdDevice= 2.00
+[    2.455659] [     T35] usb 3-9: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[    2.455662] [     T35] usb 3-9: Product: 802.11ac WLAN Adapter 
+[    2.455664] [     T35] usb 3-9: Manufacturer: Realtek 
+[    2.455666] [     T35] usb 3-9: SerialNumber: 00e04c000001
+[    2.537255] [      T9] input: Logitech Wireless Device PID:4055 Mouse as /devices/pci0000:00/0000:00:14.0/usb3/3-4/3-4:1.2/0003:046D:C52B.0003/0003:046D:4055.0004/input/input8
+[    2.537384] [      T9] hid-generic 0003:046D:4055.0004: input,hidraw1: USB HID v1.11 Mouse [Logitech Wireless Device PID:4055] on usb-0000:00:14.0-4/input2:1
+[    2.538578] [      T9] input: Logitech Wireless Device PID:4076 Keyboard as /devices/pci0000:00/0000:00:14.0/usb3/3-4/3-4:1.2/0003:046D:C52B.0003/0003:046D:4076.0005/input/input12
+[    2.574299] [      T9] hid-generic 0003:046D:4076.0005: input,hidraw2: USB HID v1.11 Keyboard [Logitech Wireless Device PID:4076] on usb-0000:00:14.0-4/input2:2
+[    2.594338] [    T616] input: Logitech Wireless Mouse as /devices/pci0000:00/0000:00:14.0/usb3/3-4/3-4:1.2/0003:046D:C52B.0003/0003:046D:4055.0004/input/input16
+[    2.594394] [    T616] logitech-hidpp-device 0003:046D:4055.0004: input,hidraw1: USB HID v1.11 Mouse [Logitech Wireless Mouse] on usb-0000:00:14.0-4/input2:1
+[    2.662433] [    T616] input: Logitech K540/K545 as /devices/pci0000:00/0000:00:14.0/usb3/3-4/3-4:1.2/0003:046D:C52B.0003/0003:046D:4076.0005/input/input17
+[    2.768307] [    T616] logitech-hidpp-device 0003:046D:4076.0005: input,hidraw2: USB HID v1.11 Keyboard [Logitech K540/K545] on usb-0000:00:14.0-4/input2:2
+[    3.348331] [    T268] usb 4-2: new SuperSpeed USB device number 2 using xhci_hcd
+[    3.360074] [    T268] usb 4-2: New USB device found, idVendor=0781, idProduct=5597, bcdDevice= 1.00
+[    3.360079] [    T268] usb 4-2: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[    3.360082] [    T268] usb 4-2: Product: Cruzer Glide 3.0
+[    3.360084] [    T268] usb 4-2: Manufacturer: SanDisk
+[    3.360085] [    T268] usb 4-2: SerialNumber: 4C530001171027121215
+[    3.365567] [    T607] usb-storage 4-2:1.0: USB Mass Storage device detected
+[    3.365696] [    T607] scsi host6: usb-storage 4-2:1.0
+[    3.365764] [    T607] usbcore: registered new interface driver usb-storage
+[    3.367080] [    T607] usbcore: registered new interface driver uas
+[   20.275117] [      T1] systemd[1]: Mounting Kernel Debug File System...
+[   20.370433] [      T1] systemd[1]: Mounted Kernel Debug File System.
+[   20.388210] [   T1162] loop: module loaded
+[   20.468275] [   T1164] module 8821au: .gnu.linkonce.this_module section size must match the kernel's built struct module size at run time
+[   21.136603] [   T1301] module 8821au: .gnu.linkonce.this_module section size must match the kernel's built struct module size at run time
+[   21.171507] [   T1247] module 8821au: .gnu.linkonce.this_module section size must match the kernel's built struct module size at run time
+
+=== Check if 8821au.ko exists ===
+-rw-r--r--. 1 root root 7669432 Feb 23 09:07 /root/wifi-build/8821au-20210708/8821au.ko
+
+=== Our struct module patch ===
+	/* SUSE compatibility: CONFIG_LIVEPATCH_IPA_CLONES fields */
+	void *klp_ipa_clones_padding[8]; /* 64 bytes to match SUSE struct module size */
+#endif
+
+#ifdef CONFIG_PRINTK_INDEX
+
+=== Check size match ===
+Our module this_module:
+ 26 .gnu.linkonce.this_module 00000580  0000000000000000  0000000000000000  0027fc80  2**6
+Reference (r8152):
+ 31 .gnu.linkonce.this_module 00000580  0000000000000000  0000000000000000  00021dc0  2**6
+
+=== cfg80211 status ===
+cfg80211             1384448  0
+rfkill                 45056  2 cfg80211
+
+=== Module symbols needed ===
+                 U __cfg80211_alloc_event_skb
+                 U __cfg80211_alloc_reply_skb
+                 U __cfg80211_get_bss
+                 U __cfg80211_send_event_skb
+                 U __kmalloc_noprof
+                 U __netdev_alloc_skb
+                 U alloc_etherdev_mqs
+                 U cfg80211_ch_switch_notify
+                 U cfg80211_ch_switch_started_notify
+                 U cfg80211_connect_done
+                 U cfg80211_del_sta_sinfo
+                 U cfg80211_disconnected
+                 U cfg80211_external_auth_request
+                 U cfg80211_ibss_joined
+                 U cfg80211_inform_bss_frame_data
+                 U cfg80211_mgmt_tx_status_ext
+                 U cfg80211_michael_mic_failure
+                 U cfg80211_new_sta
+                 U cfg80211_put_bss
+                 U cfg80211_ready_on_channel
+                 U cfg80211_remain_on_channel_expired
+                 U cfg80211_roamed
+                 U cfg80211_rx_mgmt_ext
+                 U cfg80211_scan_done
+                 U cfg80211_unlink_bss
+                 U cfg80211_vendor_cmd_reply
+                 U dev_alloc_name
+                 U device_set_wakeup_capable
+                 U device_wakeup_enable
+                 U ethtool_op_get_link
+
+=== Check vermagic ===
+alias:          usb:v7392pB611d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v7392pA813d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v7392pA812d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v7392pA811d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v3823p6249d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2357p0120d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2357p011Fd*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2357p011Ed*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v20F4p804Bd*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2019pAB32d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2001p3318d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v2001p3314d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0E66p0023d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0846p9052d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v056Ep400Fd*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v056Ep400Ed*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v056Ep4007d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v04BBp0953d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0411p029Bd*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0411p0242d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0BDAp0823d*dc*dsc*dp*icFFiscFFipFFin*
+alias:          usb:v0BDAp0820d*dc*dsc*dp*icFFiscFFipFFin*
+alias:          usb:v0BDApA811d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0BDAp8822d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0BDAp0821d*dc*dsc*dp*ic*isc*ip*in*
+alias:          usb:v0BDAp0811d*dc*dsc*dp*ic*isc*ip*in*
+depends:        usbcore,cfg80211
+vermagic:       6.12.0-160000.5-default-160000.5-default SMP preempt mod_unload modversions 
+
+=== Analyze: Is the crash from our padding or from USB device init? ===
+device_links_driver_bound operates on struct device, NOT struct module
+The crash is in the USB subsystem when the driver binds to a device
+This could be because:
+  1. The USB adapter is not plugged in but driver tries to bind
+  2. The driver's probe() function has a bug with this kernel version
+  3. Our module struct offset is wrong causing misaligned field access
+
+=== Let's try a safe test: load cfg80211 only ===
+cfg80211 load result: 0
+cfg80211             1384448  0
+rfkill                 45056  2 cfg80211
+
+=== Now try insmod with dmesg monitoring ===
+IMPORTANT: First check if USB adapter is present
+USB adapter IS plugged in
+Will attempt insmod...
+/root/investigate2.sh: line 91:  2739 Segmentation fault      insmod ${WORKDIR}/8821au-20210708/8821au.ko 2>&1
+
+=== dmesg after insmod ===
+[   76.737876] [   T2739]  bus_add_driver+0x142/0x220
+[   76.742727] [   T2739]  driver_register+0x72/0xd0
+[   76.747455] [   T2739]  usb_register_driver+0x82/0x120 [usbcore 1591c9efd7e9a518f3995bdf7b18609f81ddb6e4]
+[   76.757072] [   T2739]  ? __pfx_rtw_drv_entry+0x10/0x10 [8821au 1164f804edec04447d4d9298ef466a349bb76d61]
+[   76.766832] [   T2739]  rtw_drv_entry+0xe8/0xff0 [8821au 1164f804edec04447d4d9298ef466a349bb76d61]
+[   76.775915] [   T2739]  ? __pfx_rtw_drv_entry+0x10/0x10 [8821au 1164f804edec04447d4d9298ef466a349bb76d61]
+[   76.785618] [   T2739]  do_one_initcall+0x48/0x2f0
+[   76.790452] [   T2739]  do_init_module+0x90/0x260
+[   76.795200] [   T2739]  init_module_from_file+0x86/0xc0
+[   76.800466] [   T2739]  idempotent_init_module+0x106/0x300
+[   76.806000] [   T2739]  __x64_sys_finit_module+0x64/0xd0
+[   76.811354] [   T2739]  ? __count_memcg_events+0x53/0xf0
+[   76.816728] [   T2739]  do_syscall_64+0x7d/0x160
+[   76.821385] [   T2739]  ? do_user_addr_fault+0x176/0x670
+[   76.826756] [   T2739]  ? exc_page_fault+0x73/0x160
+[   76.831685] [   T2739]  entry_SYSCALL_64_after_hwframe+0x76/0x7e
+[   76.837737] [   T2739] RIP: 0033:0x7fb656516d2d
+[   76.842306] [   T2739] Code: 90 90 90 90 90 90 90 90 90 90 90 f3 0f 1e fa 90 90 48 89 f8 48 89 f7 48 89 d6 48 89 ca 4d 89 c2 4d 89 c8 4c 8b 4c 24 08 0f 05 <48> 3d 01 f0 ff ff 73 01 c3 48 8b 0d c3 80 0d 00 f7 d8 64 89 01 48
+[   76.862055] [   T2739] RSP: 002b:00007ffc1ac08c28 EFLAGS: 00000246 ORIG_RAX: 0000000000000139
+[   76.870657] [   T2739] RAX: ffffffffffffffda RBX: 00005616d4e367fe RCX: 00007fb656516d2d
+[   76.878474] [   T2739] RDX: 0000000000000000 RSI: 00005616d4e367fe RDI: 0000000000000003
+[   76.886640] [   T2739] RBP: 0000000000000000 R08: 00007fb6565efb20 R09: 00005616f37307d0
+[   76.894809] [   T2739] R10: 0000000000000007 R11: 0000000000000246 R12: 00005616f3730810
+[   76.902948] [   T2739] R13: 00005616f3730420 R14: 00005616f3730810 R15: 0000000000000003
+[   76.911093] [   T2739]  </TASK>
+[   76.914287] [   T2739] Modules linked in: 8821au(OEn+) af_packet qrtr(n) intel_rapl_msr intel_rapl_common x86_pkg_temp_thermal intel_powerclamp coretemp snd_hda_codec_realtek snd_hda_codec_generic snd_hda_scodec_component snd_hda_codec_hdmi kvm_intel snd_hda_intel snd_intel_dspcfg iTCO_wdt snd_intel_sdw_acpi intel_pmc_bxt nls_iso8859_1 at24 iTCO_vendor_support regmap_i2c nls_cp437 mei_hdcp(n) mei_pxp snd_hda_codec kvm snd_hda_core i2c_i801 snd_hwdep i2c_mux vfat lpc_ich irqbypass pcspkr mfd_core snd_pcm i2c_smbus mei_me snd_timer snd mei fat soundcore fan thermal joydev acpi_pad tiny_power_button(n) cfg80211 rfkill fuse loop efi_pstore(n) dmi_sysfs ip_tables x_tables uas usb_storage btrfs blake2b_generic xor raid6_pq hid_logitech_hidpp hid_logitech_dj nouveau(n) drm_gpuvm drm_exec gpu_sched drm_display_helper hid_generic usbhid cec rc_core crct10dif_pclmul(n) crc32_pclmul 8021q polyval_clmulni(n) drm_ttm_helper polyval_generic(n) garp ahci mrp ghash_clmulni_intel libahci ttm alx mxm_wmi(n) sha512_ssse3 xhci_pci sha256_ssse3
+[   76.914340] [   T2739]  libata sha1_ssse3 xhci_hcd mdio i2c_algo_bit ehci_pci ehci_hcd usbcore video wmi button overlay dm_mirror dm_region_hash dm_log dm_mod be2iscsi bnx2i cnic uio cxgb4i cxgb4 tls libcxgbi libcxgb qla4xxx iscsi_boot_sysfs iscsi_tcp libiscsi_tcp rpcrdma sunrpc rdma_ucm ib_uverbs ib_iser libiscsi scsi_transport_iscsi sd_mod sg br_netfilter scsi_mod scsi_common bridge rdma_cm configfs ib_umad stp llc ib_ipoib iw_cm nf_tables ib_cm libcrc32c crc32c_intel ib_core nfnetlink efivarfs aesni_intel crypto_simd cryptd
+[   77.053857] [   T2739] Supported: No, Unsupported modules are loaded
+[   77.060365] [   T2739] ---[ end trace 0000000000000000 ]---
+[   77.066082] [   T2739] RIP: 0010:rtw_tdls_get+0x45/0x890 [8821au]
+[   77.066721] [   T2739] Code: cd 65 48 8b 04 25 28 00 00 00 48 89 44 24 28 31 c0 83 3d c1 70 20 00 03 0f 87 f5 00 00 00 ba 02 00 00 00 48 c7 c6 63 43 ff c1 <48> 8b 3b e8 d3 4b ff ff 85 c0 0f 85 fe 00 00 00 ba 04 00 00 00 48
+[   77.067135] [   T2739] RSP: 0018:ffffd022007e3bf8 EFLAGS: 00010293
+[   77.067544] [   T2739] RAX: 0000000000000000 RBX: 000000000001448a RCX: 61c8864680b583eb
+[   77.067987] [   T2739] RDX: 0000000000000002 RSI: ffffffffc1ff4363 RDI: ffff8dcd62d80000
+[   77.068415] [   T2739] RBP: 61c8864680b583eb R08: 000000306e616c77 R09: 0000000000000000
+[   77.068850] [   T2739] R10: ffffd022007e3c60 R11: 0000000000000000 R12: ffff8dcd62d80000
+[   77.069253] [   T2739] R13: 00007ffc89137140 R14: ffff8dcd62d80000 R15: 0000000000000003
+[   77.069659] [   T2739] FS:  00007fb656ce4b80(0000) GS:ffff8dce56c80000(0000) knlGS:0000000000000000
+[   77.070099] [   T2739] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[   77.070485] [   T2739] CR2: 000055d835f2a258 CR3: 00000001341c2003 CR4: 00000000001726f0
+
+=== Module loaded? ===
+8821au               3461120  1
+cfg80211             1384448  1 8821au
+usbcore               450560  9 xhci_hcd,ehci_pci,usbhid,usb_storage,ehci_hcd,8821au,xhci_pci,uas,hid_logitech_hidpp
+
+=== Network interfaces ===
+
+Exit code: -1
