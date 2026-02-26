@@ -89,10 +89,20 @@ After all snapshots, you should have:
 | openssl headers | 3.5.0 | Leap Micro repo-main |
 | libelf headers | 0.185 (extracted) | Leap 15.6 OSS (manual) |
 
+## Additional Tools for WiFi Stack
+
+If you plan to use `wpa_supplicant` + `dhcpcd` (recommended for boot persistence, see [06-boot-persistence.md](06-boot-persistence.md)):
+
+```bash
+transactional-update --non-interactive pkg install wpa_supplicant dhcpcd
+reboot
+```
+
 ## Notes
 
 - Each `transactional-update` + reboot cycle takes ~2-3 minutes
-- The total setup requires **4 reboots** (snapshots 4 through 8)
+- The total setup requires **4-5 reboots** (depending on how you batch packages)
 - All changes persist across reboots in their respective snapshots
 - Use `snapper list` to see all snapshots
 - Use `snapper rollback N` to rollback to snapshot N if something breaks
+- The `/root/` directory is writable and persists across snapshots -- use it for build artifacts

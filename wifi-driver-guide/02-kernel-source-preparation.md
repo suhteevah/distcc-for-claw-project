@@ -86,4 +86,4 @@ Expected output (last lines):
 
 - The `/lib/modules/` directory is a symlink to `/usr/lib/modules/` on Leap Micro
 - The root filesystem is read-only, so you can't create `build` or `source` symlinks in `/lib/modules/`. Instead, use the `KSRC=` parameter when building drivers.
-- The vanilla 6.12 source won't have SUSE-specific config options. This is addressed in [04-struct-module-fix.md](04-struct-module-fix.md).
+- The vanilla 6.12 source won't have SUSE-specific struct definitions. This causes **two** ABI mismatches that must be fixed before modules will load correctly. See [03-suse-abi-fixes.md](03-suse-abi-fixes.md).
