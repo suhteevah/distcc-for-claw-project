@@ -1,0 +1,35 @@
+[  100661ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/auth:0
+[  105255ms] [ERROR] Error: There is no prefs saved for last nav
+    at https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:2:9548224 @ https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:1
+[  105256ms] [ERROR] Error: There is no prefs saved for last nav
+    at https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:2:9547663 @ https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:1
+[ 1098245ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/interfaces/ipv4:0
+[ 1098260ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1098273ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/dynamic-file/getStatsData.json?restype=4&datatype=2:0
+[ 1098275ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/dynamic-file/getMotdArray.json:0
+[ 1099261ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/dynamic-file/getJsonData.json?dataSet=alertStatus:0
+[ 1099262ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:1
+[ 1099262ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/dynamic-file/getObjectList.json?type=17171467259&addrObjArray_ts=238883267817&serviceObjArray_ts=238883229444&ifaceArray_ts=238883288061&threatObjArray_ts=0&threatCatArray_ts=0&appObjArray_ts=0&appCatArray_ts=0&appAppArray_ts=0&countryObjArray_ts=0&afObjArray_ts=0&urlObjArray_ts=0&urlxObjArray_ts=0&blkPageObjArray_ts=0&repObjArray_ts=0&peActObjArray_ts=0&cfsUrlObjs_ts=238883229444&dosActObjArray_ts=0&scheduleObjArray_ts=238883229444&zoneObjArray_ts=238883267817&bandwidthObjArray_ts=238883229444&natPolArray_ts=1772081571&ruleArray_ts=238883267781&routePolArray_ts=1772324678&cfsActObjs_ts=238883229444&cfsProfileObjs_ts=238883229444&cfsPolicyObjs_ts=238883288061&emailObjArray_ts=238883288061&dynObjArray_ts=238883288061&actionObjArray_ts=238883288061&matchObjArray_ts=238883288061&pdfObjArray_ts=238883229444&decryptionPolArray_ts=2085978496&dosPolArray_ts=0&cePolicyObjs_ts=0&ceProfObjs_ts=238883288061:0
+[ 1099264ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/vendors~main.78f6f9cd4e783c950b76.js:1
+[ 1103436ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/interfaces/ipv4:0
+[ 1103437ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1103450ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/ipv4/ip:0
+[ 1103452ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1103455ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/ipv4/status:0
+[ 1103456ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1103457ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/mac:0
+[ 1103458ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1108532ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/ipv4/status:0
+[ 1108533ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1108533ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/interfaces/ipv4:0
+[ 1108534ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1108563ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/mac:0
+[ 1108565ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1108565ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/reporting/interfaces/ipv4/ip:0
+[ 1108566ms] [ERROR] o @ https://192.168.168.168/sonicui/7/static/js/network-interfaces.accec87cf669aec7fa5d.js:0
+[ 1113332ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/auth:0
+[ 1113335ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/auth:0
+[ 1113357ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/auth:0
+[ 1434016ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ https://192.168.168.168/api/sonicos/auth:0
+[ 1439544ms] [ERROR] Failed to load resource: net::ERR_TOO_MANY_RETRIES @ https://192.168.168.168/sonicui/7/static/fonts/nunito-sans-v5-latin_latin-ext-800.18702ea.woff2:0
+[ 1439936ms] [ERROR] Failed to load resource: net::ERR_TOO_MANY_RETRIES @ https://192.168.168.168/sonicui/7/static/fonts/nunito-sans-v5-latin_latin-ext-800.84e0321.woff:0
