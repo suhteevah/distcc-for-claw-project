@@ -62,6 +62,7 @@ done
 # Validate Tailscale key
 TS_AUTH_KEY="${TS_AUTH_KEY:-}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN:-}"
 if [ -z "$TS_AUTH_KEY" ]; then
     echo "FATAL: No TS_AUTH_KEY found. Create .secrets file from .secrets.example"
     echo "  cp .secrets.example .secrets && \$EDITOR .secrets"
@@ -572,6 +573,22 @@ if [ "$CURRENT_PHASE" -le 7 ]; then
         SIDECAR_OPT_JSON="\"sidecarModel\": \"${SIDECAR_MODEL}\","
     fi
 
+    # Discord bot integration (optional — MailClaw uses this)
+    DISCORD_JSON=""
+    if [ -n "${DISCORD_BOT_TOKEN:-}" ]; then
+        DISCORD_JSON=',
+    "discord": {
+      "accounts": {
+        "1477884540704788500": {
+          "token": "'"${DISCORD_BOT_TOKEN}"'"
+        }
+      }
+    }'
+        info "Discord bot token configured for MailClaw"
+    else
+        warn "No DISCORD_BOT_TOKEN set — MailClaw Discord integration will be disabled"
+    fi
+
     # Ollama-only config — no Anthropic API dependency
     sudo -u claude-agent tee "$OPENCLAW_DIR/openclaw.json" > /dev/null << OCEOF
 {
@@ -605,7 +622,7 @@ if [ "$CURRENT_PHASE" -le 7 ]; then
     "mode": "local",
     "bind": "0.0.0.0",
     "auth": { "mode": "token" },
-    "tailscale": { "mode": "off" }
+    "tailscale": { "mode": "off" }${DISCORD_JSON}
   },
   "plugins": {
     "load": {
