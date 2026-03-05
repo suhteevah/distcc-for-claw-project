@@ -1,0 +1,3 @@
+[      33ms] TypeError: Cannot read properties of undefined (reading 'length')
+    at https://www.t-mobile.com/etc.clientlibs/digx/privacy/clientlibs/service-clientlibs/session.ACSHASHe2a14c96b177a36837c1a631777cb39b.js:12:3640
+[      22ms] [ERROR] [Thu, 05 Mar 2026 05:25:01 GMT] [error] [ phoenix-platform  Phoenix Error Service ] Unhandled exception caught: Uncaught TypeError: Cannot read properties of undefined (reading 'length') file: https://www.t-mobile.com/etc.clientlibs/digx/privacy/clientlibs/service-clientlibs/session.ACSHASHe2a14c96b177a36837c1a631777cb39b.js lineno: 12 colno: 3640 -- {} @ https://cdn.signalfx.com/o11y-gdi-rum/v1.2.0/splunk-otel-web.js:0
