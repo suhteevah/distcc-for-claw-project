@@ -1,0 +1,4 @@
+[     696ms] [WARNING] The singleton usage of SemanticMetrics will be deprecated. Please use createSemanticMetrics() @ https://wap.spotifycdn.com/fa20/_next/static/chunks/pages/_app-a4b95732db43e5dc.js:13
+[    1417ms] Uncaught TypeError: Cannot read properties of undefined (reading 'TenantFeatures')
+    at <anonymous> (https://cdn.cookielaw.org/scripttemplates/202601.2.0/otBannerSdk.js:6:531568)
+    at <anonymous> (https://cdn.cookielaw.org/scripttemplates/202601.2.0/otBannerSdk.js:6:541417)

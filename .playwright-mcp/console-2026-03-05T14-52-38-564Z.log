@@ -1,0 +1,2 @@
+[     919ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://music.amazon.com/1/batch/2/OE/mid=ATVPDKIKX0DER:sid=143-7211240-4197452:rid=PED70YRK9SR291Z8NSJP:sn=music.amazon.com:0
+[    1087ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://music.amazon.com/favicon.ico:0
