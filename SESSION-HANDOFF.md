@@ -204,6 +204,76 @@ The cnc-server's Tailscale auth key is in `.secrets`.
 
 ---
 
+## SSH Command Toolkit
+
+Three files provide modular fleet control from any device (iPhone, laptop, this window):
+
+### cnc-hosts.conf — Host Registry
+
+Central config listing every host, its role, agent port, and description.
+Edit this file to add/remove machines. All tools read from it automatically.
+
+```
+# Format: ROLE|HOSTNAME|AGENT_PORT|DESCRIPTION
+orchestrator|cnc-server|3284|CNC Server (MicroOS orchestrator)
+agent|macbook1|3284|MacBook 1 (headless agent)
+ollama|kokonoe|0|Kokonoe (fallback Ollama)
+ollama|faye|0|Faye
+```
+
+### cnc-cmd.sh — On-Host Command Toolkit
+
+Runs directly on any fleet machine. Reads `cnc-hosts.conf` for host discovery.
+
+```bash
+cnc-cmd.sh              # interactive menu (iPhone-friendly)
+cnc-cmd.sh status       # full fleet status
+cnc-cmd.sh agents       # agent health check
+cnc-cmd.sh ollama       # Ollama availability
+cnc-cmd.sh task "msg"   # send task to local agent
+cnc-cmd.sh dispatch kokonoe "msg"  # send task to remote agent
+cnc-cmd.sh ssh faye     # SSH hop to another host
+cnc-cmd.sh hosts        # list all known hosts
+```
+
+### cnc-remote.sh — SSH Wrapper (run from anywhere)
+
+SSHs into a target host and runs cnc-cmd.sh remotely. Use `-H` to target
+any host (default: cnc-server).
+
+```bash
+cnc-remote.sh                       # menu on cnc-server
+cnc-remote.sh -H kokonoe status     # status from kokonoe
+cnc-remote.sh -H faye ollama        # ollama check on faye
+cnc-remote.sh install               # deploy toolkit to cnc-server
+cnc-remote.sh install-all           # deploy to entire fleet
+```
+
+### iPhone Workflow
+
+1. Install **Termius** or **Blink Shell** from the App Store
+2. Add Tailscale VPN (or use Tailscale iOS app)
+3. Add SSH hosts: `cnc-server`, `kokonoe`, `faye` (MagicDNS hostnames)
+4. SSH in, run: `cnc-cmd.sh` → interactive menu
+5. Or run one-liners: `cnc-cmd.sh status`, `cnc-cmd.sh dispatch rpi1 "build"`
+
+### Deploying to the Fleet
+
+```bash
+# Deploy toolkit + config to all hosts
+./cnc-remote.sh install-all
+
+# Or deploy to a specific host
+./cnc-remote.sh install kokonoe
+```
+
+Config file search order on each host:
+1. Same directory as `cnc-cmd.sh`
+2. `/etc/cnc/cnc-hosts.conf`
+3. `~/.cnc-hosts.conf`
+
+---
+
 ## Complete File Tree
 
 ```
@@ -216,7 +286,10 @@ distcc-for-claw-project/
 ├── DEPLOYMENTS.md                    # Index of all 3 deployments
 ├── SESSION-HANDOFF.md                # THIS FILE
 │
-├── cnc-server-bootstrap.sh           # ★ MicroOS orchestrator (ACTIVE WORK)
+├── cnc-cmd.sh                        # ★ Fleet command toolkit (runs on any host)
+├── cnc-remote.sh                     # ★ SSH wrapper (run from iPhone/laptop)
+├── cnc-hosts.conf                    # ★ Fleet host registry (shared config)
+├── cnc-server-bootstrap.sh           # MicroOS orchestrator bootstrap
 ├── combustion/
 │   └── script                        # Combustion first-boot for MicroOS USB
 │
