@@ -10,6 +10,7 @@ set -uo pipefail
 # Configuration
 AGENTS=(
   "localhost:3284|arch-local"
+  "cnc-server:3284|cnc-server-agent"
   "macbook1:3284|macbook1-agent"
   "imac:3284|imac-agent"
   "rpi1:3284|rpi1-agent"
@@ -58,7 +59,7 @@ fi
 
 # Check Tailscale connectivity to each node
 echo "--- Tailscale Network ---" | tee -a "$LOGFILE"
-HOSTS=("macbook1" "macbook2" "imac" "rpi1" "rpi2" "rpi3" "windows-desktop" "windows-laptop")
+HOSTS=("cnc-server" "macbook1" "macbook2" "imac" "rpi1" "rpi2" "rpi3" "windows-desktop" "windows-laptop")
 for host in "${HOSTS[@]}"; do
   if tailscale ping --timeout 3s "$host" &>/dev/null; then
     echo "[OK]   ${host}: reachable" | tee -a "$LOGFILE"
