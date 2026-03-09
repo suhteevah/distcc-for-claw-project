@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e1e4ed;
+    --dim: #8b8fa3;
+    --accent: #6c5ce7;
+    --green: #00b894;
+    --red: #e74c3c;
+    --orange: #f39c12;
+    --blue: #0984e3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0 1.5rem;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 600; }
+  header .time { color: var(--dim); font-size: 0.9rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 1rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+  }
+  .card h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card h2 .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.green { background: var(--green); }
+  .dot.red { background: var(--red); }
+  .dot.orange { background: var(--orange); }
+
+  /* Fleet Health */
+  .agent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .agent-row:last-child { border-bottom: none; }
+  .agent-name { font-size: 0.9rem; }
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .badge.up { background: rgba(0,184,148,0.15); color: var(--green); }
+  .badge.down { background: rgba(231,76,60,0.15); color: var(--red); }
+
+  /* Weather */
+  .weather-main {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.8rem;
+  }
+  .weather-temp { font-size: 2.8rem; font-weight: 300; }
+  .weather-desc { color: var(--dim); font-size: 0.9rem; }
+  .weather-icon { font-size: 2.5rem; }
+  .forecast-row {
+    display: flex;
+    gap: 0.8rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+  }
+  .forecast-item {
+    text-align: center;
+    font-size: 0.8rem;
+    min-width: 60px;
+    color: var(--dim);
+  }
+  .forecast-item .temp { color: var(--text); font-weight: 500; }
+
+  /* Finance */
+  .ticker-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .ticker-row:last-child { border-bottom: none; }
+  .ticker-symbol { font-weight: 600; font-size: 0.95rem; }
+  .ticker-price { font-size: 0.95rem; }
+  .ticker-change { font-size: 0.8rem; }
+  .ticker-change.pos { color: var(--green); }
+  .ticker-change.neg { color: var(--red); }
+
+  /* System Metrics */
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+  }
+  .metric-label { color: var(--dim); font-size: 0.85rem; }
+  .metric-value { font-size: 0.95rem; font-weight: 500; }
+  .bar-outer {
+    width: 100%;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: 0.3rem;
+  }
+  .bar-inner {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+  .bar-inner.ok { background: var(--green); }
+  .bar-inner.warn { background: var(--orange); }
+  .bar-inner.crit { background: var(--red); }
+
+  /* Tasks & Habits */
+  .task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .task-item:last-child { border-bottom: none; }
+  .task-item input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 16px; height: 16px;
+  }
+  .task-item.done span { text-decoration: line-through; color: var(--dim); }
+  .task-item .delete-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 0.3rem;
+  }
+  .task-item .delete-btn:hover { color: var(--red); }
+  .add-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+  }
+  .add-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  .add-row button, .habit-log-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .habit-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .habit-row:last-child { border-bottom: none; }
+  .habit-streak { font-size: 0.8rem; color: var(--dim); }
+  .habit-today { font-size: 0.8rem; }
+  .habit-today.done { color: var(--green); }
+  .habit-today.pending { color: var(--orange); }
+
+  /* Settings */
+  .settings-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--dim);
+    padding: 0.3rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .settings-panel {
+    display: none;
+    margin-bottom: 1rem;
+  }
+  .settings-panel.open { display: block; }
+  .settings-panel .card { font-size: 0.85rem; }
+  .settings-panel label { display: block; color: var(--dim); margin: 0.5rem 0 0.2rem; font-size: 0.8rem; }
+  .settings-panel input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.35rem 0.6rem;
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  .settings-panel button {
+    margin-top: 0.7rem;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+  }
+
+  .loading { color: var(--dim); font-style: italic; font-size: 0.85rem; }
+  .error { color: var(--red); font-size: 0.85rem; }
+
+  @media (max-width: 600px) {
+    body { padding: 0.5rem; }
+    .grid { grid-template-columns: 1fr; gap: 0.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dashboard</h1>
+  <div>
+    <span class="time" id="clock"></span>
+    <button class="settings-toggle" onclick="toggleSettings()">Settings</button>
+  </div>
+</header>
+
+<div class="settings-panel" id="settingsPanel">
+  <div class="card">
+    <h2>Configuration</h2>
+    <label>Weather API Key (OpenWeatherMap)</label>
+    <input id="cfgWeatherKey" placeholder="Enter API key">
+    <label>Latitude</label>
+    <input id="cfgLat" placeholder="40.7128">
+    <label>Longitude</label>
+    <input id="cfgLon" placeholder="-74.0060">
+    <label>Units (metric / imperial)</label>
+    <input id="cfgUnits" placeholder="metric">
+    <label>Stocks (comma separated)</label>
+    <input id="cfgStocks" placeholder="AAPL,GOOGL,MSFT">
+    <label>Crypto (comma separated, CoinGecko IDs)</label>
+    <input id="cfgCrypto" placeholder="bitcoin,ethereum">
+    <button onclick="saveSettings()">Save</button>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Weather -->
+  <div class="card">
+    <h2><span class="dot green"></span> Weather</h2>
+    <div id="weatherContent"><span class="loading">Loading...</span></div>
+  </div>
+
+  <!-- Fleet Health -->
+  <div class="card">
+    <h2><span class="dot green" id="fleetDot"></span> Fleet Health</h2>
+    <div id="fleetContent"><span class="loading">Loading...</span></div>
+  </div>
+
+  <!-- System Metrics -->
+  <div class="card">
+    <h2><span class="dot green" id="metricsDot"></span> System Metrics</h2>
+    <div id="metricsContent"><span class="loading">Loading...</span></div>
+  </div>
+
+  <!-- Finance -->
+  <div class="card">
+    <h2><span class="dot green"></span> Finance</h2>
+    <div id="financeContent"><span class="loading">Loading...</span></div>
+  </div>
+
+  <!-- Tasks -->
+  <div class="card">
+    <h2><span class="dot green"></span> Tasks</h2>
+    <div id="tasksContent"></div>
+    <div class="add-row">
+      <input id="newTask" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addTask()">
+      <button onclick="addTask()">Add</button>
+    </div>
+  </div>
+
+  <!-- Habits -->
+  <div class="card">
+    <h2><span class="dot green"></span> Habits</h2>
+    <div id="habitsContent"></div>
+    <div class="add-row">
+      <input id="newHabit" placeholder="Add a habit..." onkeydown="if(event.key==='Enter')addHabit()">
+      <button onclick="addHabit()">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+// --- Clock ---
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) +
+    '  ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// --- Fetch helpers ---
+async function api(path, opts) {
+  const resp = await fetch(API + path, opts);
+  return resp.json();
+}
+
+// --- Weather ---
+const weatherIcons = {
+  Clear: '\u2600\uFE0F', Clouds: '\u2601\uFE0F', Rain: '\uD83C\uDF27\uFE0F',
+  Drizzle: '\uD83C\uDF26\uFE0F', Thunderstorm: '\u26C8\uFE0F', Snow: '\u2744\uFE0F',
+  Mist: '\uD83C\uDF2B\uFE0F', Fog: '\uD83C\uDF2B\uFE0F', Haze: '\uD83C\uDF2B\uFE0F',
+};
+
+async function loadWeather() {
+  const el = document.getElementById('weatherContent');
+  try {
+    const [w, f] = await Promise.all([api('/api/weather'), api('/api/forecast')]);
+    if (w.error) { el.innerHTML = `<span class="error">${w.error}</span>`; return; }
+    const icon = weatherIcons[w.weather?.[0]?.main] || '\uD83C\uDF24\uFE0F';
+    const unit = w.main?.temp > 50 ? '\u00B0F' : '\u00B0C';
+    let html = `
+      <div class="weather-main">
+        <span class="weather-icon">${icon}</span>
+        <div>
+          <div class="weather-temp">${Math.round(w.main?.temp || 0)}${unit}</div>
+          <div class="weather-desc">${w.weather?.[0]?.description || ''} &bull; Feels like ${Math.round(w.main?.feels_like || 0)}${unit}</div>
+          <div class="weather-desc">Humidity: ${w.main?.humidity}% &bull; Wind: ${w.wind?.speed} m/s</div>
+        </div>
+      </div>`;
+    if (f.list) {
+      html += '<div class="forecast-row">';
+      for (const item of f.list.slice(0, 6)) {
+        const time = new Date(item.dt * 1000).toLocaleTimeString('en-US', { hour: 'numeric' });
+        html += `<div class="forecast-item"><div>${time}</div><div class="temp">${Math.round(item.main.temp)}${unit}</div></div>`;
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+// --- Fleet Health ---
+async function loadFleet() {
+  const el = document.getElementById('fleetContent');
+  const dot = document.getElementById('fleetDot');
+  try {
+    const data = await api('/api/fleet');
+    const agents = data.agents || [];
+    const downCount = agents.filter(a => a.status === 'down').length;
+    dot.className = 'dot ' + (downCount === 0 ? 'green' : downCount === agents.length ? 'red' : 'orange');
+    el.innerHTML = agents.map(a => `
+      <div class="agent-row">
+        <span class="agent-name">${a.name}</span>
+        <span class="badge ${a.status}">${a.status}</span>
+      </div>
+    `).join('');
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+// --- System Metrics ---
+async function loadMetrics() {
+  const el = document.getElementById('metricsContent');
+  const dot = document.getElementById('metricsDot');
+  try {
+    const m = await api('/api/metrics');
+    if (m.error) { el.innerHTML = `<span class="error">${m.error}</span>`; return; }
+    const memPct = m.memory?.usedPercent || 0;
+    const diskPct = parseInt(m.disk?.usePercent) || 0;
+    const barClass = (v) => v > 90 ? 'crit' : v > 70 ? 'warn' : 'ok';
+    dot.className = 'dot ' + (memPct > 90 || diskPct > 90 ? 'red' : memPct > 70 ? 'orange' : 'green');
+    el.innerHTML = `
+      <div class="metric-row"><span class="metric-label">Hostname</span><span class="metric-value">${m.hostname || '?'}</span></div>
+      <div class="metric-row"><span class="metric-label">Uptime</span><span class="metric-value">${m.uptime || '?'}</span></div>
+      <div class="metric-row">
+        <span class="metric-label">Memory</span>
+        <span class="metric-value">${m.memory?.totalMB - m.memory?.availableMB} / ${m.memory?.totalMB} MB (${memPct}%)</span>
+      </div>
+      <div class="bar-outer"><div class="bar-inner ${barClass(memPct)}" style="width:${memPct}%"></div></div>
+      <div class="metric-row"><span class="metric-label">Load (1/5/15m)</span><span class="metric-value">${m.load?.['1m']} / ${m.load?.['5m']} / ${m.load?.['15m']}</span></div>
+      <div class="metric-row">
+        <span class="metric-label">Disk</span>
+        <span class="metric-value">${m.disk?.used || '?'} / ${m.disk?.size || '?'} (${m.disk?.usePercent || '?'})</span>
+      </div>
+      <div class="bar-outer"><div class="bar-inner ${barClass(diskPct)}" style="width:${diskPct}%"></div></div>
+    `;
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+// --- Finance ---
+async function loadFinance() {
+  const el = document.getElementById('financeContent');
+  try {
+    const [cryptoData] = await api('/api/crypto');
+    if (cryptoData.error) { el.innerHTML = `<span class="error">${cryptoData.error}</span>`; return; }
+    let html = '<div style="margin-bottom:0.5rem;font-size:0.8rem;color:var(--dim)">Crypto</div>';
+    for (const [id, data] of Object.entries(cryptoData)) {
+      const d = data;
+      const change = d.usd_24h_change || 0;
+      const changeClass = change >= 0 ? 'pos' : 'neg';
+      const sign = change >= 0 ? '+' : '';
+      html += `
+        <div class="ticker-row">
+          <div><span class="ticker-symbol">${id.charAt(0).toUpperCase() + id.slice(1)}</span></div>
+          <div style="text-align:right">
+            <div class="ticker-price">$${Number(d.usd).toLocaleString()}</div>
+            <div class="ticker-change ${changeClass}">${sign}${change.toFixed(2)}%</div>
+          </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+
+    // Stocks - attempt to load
+    try {
+      const [stockData] = await api('/api/stocks');
+      if (!stockData.error && stockData.chart?.result) {
+        html += '<div style="margin:0.8rem 0 0.5rem;font-size:0.8rem;color:var(--dim)">Stocks</div>';
+        for (const r of stockData.chart.result) {
+          const meta = r.meta;
+          const price = meta.regularMarketPrice;
+          const prevClose = meta.chartPreviousClose;
+          const change = ((price - prevClose) / prevClose * 100);
+          const changeClass = change >= 0 ? 'pos' : 'neg';
+          const sign = change >= 0 ? '+' : '';
+          html += `
+            <div class="ticker-row">
+              <span class="ticker-symbol">${meta.symbol}</span>
+              <div style="text-align:right">
+                <div class="ticker-price">$${price?.toFixed(2)}</div>
+                <div class="ticker-change ${changeClass}">${sign}${change.toFixed(2)}%</div>
+              </div>
+            </div>`;
+        }
+        el.innerHTML = html;
+      }
+    } catch { /* stocks optional */ }
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+// --- Tasks ---
+async function loadTasks() {
+  const el = document.getElementById('tasksContent');
+  try {
+    const tasks = await api('/api/tasks');
+    if (!tasks.length) { el.innerHTML = '<span class="loading">No tasks yet</span>'; return; }
+    el.innerHTML = tasks.map(t => `
+      <div class="task-item ${t.done ? 'done' : ''}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${t.id}', this.checked)">
+        <span>${escHtml(t.text)}</span>
+        <button class="delete-btn" onclick="deleteTask('${t.id}')">&times;</button>
+      </div>
+    `).join('');
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+async function addTask() {
+  const input = document.getElementById('newTask');
+  const text = input.value.trim();
+  if (!text) return;
+  await api('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+  input.value = '';
+  loadTasks();
+}
+
+async function toggleTask(id, done) {
+  await api(`/api/tasks/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done }) });
+  loadTasks();
+}
+
+async function deleteTask(id) {
+  await api(`/api/tasks/${id}`, { method: 'DELETE' });
+  loadTasks();
+}
+
+// --- Habits ---
+async function loadHabits() {
+  const el = document.getElementById('habitsContent');
+  try {
+    const habits = await api('/api/habits');
+    if (!habits.length) { el.innerHTML = '<span class="loading">No habits yet</span>'; return; }
+    const today = new Date().toISOString().split('T')[0];
+    el.innerHTML = habits.map(h => {
+      const doneToday = h.log.includes(today);
+      const streak = calcStreak(h.log);
+      return `
+        <div class="habit-row">
+          <div>
+            <div>${escHtml(h.name)}</div>
+            <div class="habit-streak">${streak} day streak</div>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center">
+            <span class="habit-today ${doneToday ? 'done' : 'pending'}">${doneToday ? 'Done' : 'Pending'}</span>
+            ${!doneToday ? `<button class="habit-log-btn" onclick="logHabit('${h.id}')">Log</button>` : ''}
+            <button class="delete-btn" onclick="deleteHabit('${h.id}')">&times;</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) { el.innerHTML = `<span class="error">${e}</span>`; }
+}
+
+function calcStreak(log) {
+  if (!log.length) return 0;
+  const sorted = [...log].sort().reverse();
+  let streak = 0;
+  const d = new Date();
+  for (let i = 0; i < sorted.length; i++) {
+    const expected = new Date(d);
+    expected.setDate(expected.getDate() - i);
+    const exp = expected.toISOString().split('T')[0];
+    if (sorted[i] === exp) streak++;
+    else break;
+  }
+  return streak;
+}
+
+async function addHabit() {
+  const input = document.getElementById('newHabit');
+  const name = input.value.trim();
+  if (!name) return;
+  await api('/api/habits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  input.value = '';
+  loadHabits();
+}
+
+async function logHabit(id) {
+  await api(`/api/habits/${id}/log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  loadHabits();
+}
+
+async function deleteHabit(id) {
+  await api(`/api/habits/${id}`, { method: 'DELETE' });
+  loadHabits();
+}
+
+// --- Settings ---
+function toggleSettings() {
+  document.getElementById('settingsPanel').classList.toggle('open');
+  loadSettings();
+}
+
+async function loadSettings() {
+  const cfg = await api('/api/config');
+  document.getElementById('cfgLat').value = cfg.weather?.lat || '';
+  document.getElementById('cfgLon').value = cfg.weather?.lon || '';
+  document.getElementById('cfgUnits').value = cfg.weather?.units || 'metric';
+  document.getElementById('cfgStocks').value = cfg.finance?.stocks?.join(',') || '';
+  document.getElementById('cfgCrypto').value = cfg.finance?.crypto?.join(',') || '';
+}
+
+async function saveSettings() {
+  const key = document.getElementById('cfgWeatherKey').value.trim();
+  const update = {
+    weather: {
+      lat: document.getElementById('cfgLat').value.trim(),
+      lon: document.getElementById('cfgLon').value.trim(),
+      units: document.getElementById('cfgUnits').value.trim(),
+    },
+    finance: {
+      stocks: document.getElementById('cfgStocks').value.split(',').map(s => s.trim()).filter(Boolean),
+      crypto: document.getElementById('cfgCrypto').value.split(',').map(s => s.trim()).filter(Boolean),
+    },
+  };
+  if (key) update.weather.apiKey = key;
+  await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(update) });
+  document.getElementById('settingsPanel').classList.remove('open');
+  refreshAll();
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Refresh all ---
+function refreshAll() {
+  loadWeather();
+  loadFleet();
+  loadMetrics();
+  loadFinance();
+  loadTasks();
+  loadHabits();
+}
+
+// Initial load
+refreshAll();
+
+// Auto-refresh every 60 seconds
+setInterval(refreshAll, 60000);
+</script>
+</body>
+</html>
