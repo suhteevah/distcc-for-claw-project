@@ -1,8 +1,8 @@
 ---
 name: cnc
-description: Control the fleet — check status, dispatch tasks, SSH into hosts, manage services. Use when the user wants to interact with cnc-server, kokonoe, faye, or any fleet host.
+description: "Control the fleet - check status, dispatch tasks, SSH into hosts, manage services. Use when the user wants to interact with cnc-server, kokonoe, faye, or any fleet host."
 user-invocable: true
-allowed-tools: Bash(ssh *), Bash(scp *), Bash(curl *), Bash(tailscale *), Bash(./cnc-remote.sh *), Bash(./cnc-cmd.sh *), Read, Grep
+allowed-tools: Bash, Read, Grep
 ---
 
 # Fleet Command Center
