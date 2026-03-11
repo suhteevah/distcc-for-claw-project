@@ -1,0 +1,4 @@
+[     511ms] [ERROR] Unrecognized Content-Security-Policy directive 'script-nonce'. @ http://10.0.0.1/login:0
+[     511ms] [ERROR] The Content-Security-Policy directive 'plugin-types' has been removed from the specification. If you want to block plugins, consider specifying "object-src 'none'" instead. @ http://10.0.0.1/login:0
+[     511ms] [ERROR] Unrecognized Content-Security-Policy directive 'reflected-xss'. @ http://10.0.0.1/login:0
+[    1873ms] [WARNING] JQMIGRATE: jQuery.browser is deprecated @ http://10.0.0.1/cmn/js/lib/jquery-migrate-1.2.1.js:40
