@@ -1,0 +1,25 @@
+[   34941ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://www.upwork.com/jobs/Expert-Needed-for-OpenClaw-Multi-Agent-Setup-VPS_~022032404354119800148/?referrer_url_path=find_work_home:0
+[   35559ms] [ERROR] Failed to load resource: net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep @ https://upwork.com/favicon.ico:0
+[   36247ms] [ERROR] %c%d font-size:0;color:transparent NaN @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/027fb/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lang=auto:0
+[   36248ms] [ERROR] %c%d font-size:0;color:transparent NaN @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/027fb/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lang=auto:0
+[   36251ms] [WARNING] %c%d font-size:0;color:transparent NaN @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/027fb/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lang=auto:0
+[   36251ms] [WARNING] %c%d font-size:0;color:transparent NaN @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/027fb/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lang=auto:0
+[   36294ms] [ERROR]  Note that 'script-src' was not explicitly set, so 'default-src' is used as a fallback. @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/027fb/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lang=auto:0
+[   36623ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/pat/9dbc6bd26db3cb93/1773419405504/ef97e81800ccc5882e708d96b221c099b8e477c07bd81c225ba95edb645fe136/WHDX4Kr4UlQsXcj:0
+[   39597ms] [ERROR] Failed to load resource: net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep @ https://upwork.com/favicon.ico:0
+[   41665ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   42050ms] [ERROR] Hydration completed but contains mismatches. @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:17
+[   42156ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/suit2-tracker/0.3.50/index.iife.min.js:0
+[   42157ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:67
+[   73876ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   73950ms] [ERROR] Hydration completed but contains mismatches. @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:17
+[   73995ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/suit2-tracker/0.3.50/index.iife.min.js:0
+[   73995ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:67
+[   81036ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   81098ms] [ERROR] Hydration completed but contains mismatches. @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:17
+[   81134ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/suit2-tracker/0.3.50/index.iife.min.js:0
+[   81134ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:67
+[   87942ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   88007ms] [ERROR] Hydration completed but contains mismatches. @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:17
+[   88047ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/suit2-tracker/0.3.50/index.iife.min.js:0
+[   88048ms] [WARNING] [SUIT]: olog is deprecated, remove it from the trackers array - CI-15888 @ https://www.upwork.com/static/assets/JobDetailsNuxt/_nuxt/entry.DsIukgAu.js:67

@@ -1,0 +1,1 @@
+[     522ms] [ERROR] WebSocket connection to 'wss://jpworgen.com:8080/' failed: Error in connection establishment: net::ERR_SSL_PROTOCOL_ERROR @ https://jpworgen.com/_snowpack/hmr-client.js:57

@@ -1,0 +1,6 @@
+[   30267ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.168.100:3080/grafana/api/ds/query:0
+[   30269ms] [ERROR] {status: 502, statusText: Bad Gateway, data: Object, config: Object, traceId: undefined} @ http://192.168.168.100:3080/grafana/public/build/6224.14ad68dacd59bbbe57ca.js:94
+[   30271ms] [ERROR] Error: error when executing the sql query
+    at J.metricFindQuery (http://192.168.168.100:3080/grafana/public/build/6224.14ad68dacd59bbbe57ca.js:95:495) @ http://192.168.168.100:3080/grafana/public/build/4570.87a4acc6d9144f9ee50a.js:5441
+[   30280ms] Error: error when executing the sql query
+    at J.metricFindQuery (http://192.168.168.100:3080/grafana/public/build/6224.14ad68dacd59bbbe57ca.js:95:495)
