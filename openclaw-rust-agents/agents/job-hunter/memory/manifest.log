@@ -1,0 +1,4 @@
+# memory/manifest.log — Chain of Custody
+# Format: <ISO-timestamp> <SHA256> <filename> <action>
+# -------------------------------------------------------
+2026-03-15T01:23:17+00:00 1CEDE9D63D9D72AFF8B453563DF8A09C980969985E233A65B86CD29CCB500E90 SOUL.md SEALED

@@ -1,0 +1,5 @@
+F863D6FAA179F427CCFF316A1FAE486BFE5618B7A8970039F3B941674286E318  SOUL.md
+# Generated: 2026-03-15T01:23:17+00:00
+# Sealed by: Claude (agent fleet deployment)
+# Purpose: Identity integrity sentinel. If SOUL.md hash does not match this value,
+#          initiate EMERGENCY_HALT — report discrepancy to Matt before any further action.
