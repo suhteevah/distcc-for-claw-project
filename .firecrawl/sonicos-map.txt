@@ -1,0 +1,3 @@
+https://sonicos-api.sonicwall.com
+https://sonicos-api.sonicwall.com/sonicos_files/6.5.4.9-93n/NSA-2650/sonicos_openapi.yml
+https://sonicos-api.sonicwall.com/sonicos_files/default/ecli_help.html

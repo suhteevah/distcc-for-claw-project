@@ -11,6 +11,8 @@ members = [
     "agents/wow-economy",
     "agents/legal-team",
     "agents/coder",
+    "agents/briefing",
+    "agents/mailclaw",
 ]
 
 [workspace.dependencies]

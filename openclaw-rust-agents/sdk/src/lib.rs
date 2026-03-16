@@ -407,6 +407,18 @@ impl OpenClawAgent {
             Err(e) => warn!(error = %e, "failed to register with Core, continuing in standalone mode"),
         }
 
+        // 2.5 Post startup status to Discord blackboard
+        let caps = self.config.capabilities.join(", ");
+        if let Err(e) = post_discord_status(
+            "DISCORD_WEBHOOK",
+            &self.config.agent_id,
+            "🟢 Online",
+            &format!("Port {} | Capabilities: {}", self.config.port, caps),
+            DISCORD_GREEN,
+        ).await {
+            warn!(error = %e, "failed to post startup status to Discord");
+        }
+
         // 3. Start heartbeat background task
         let hb_agent = self.clone();
         tokio::spawn(async move {
@@ -535,6 +547,15 @@ async fn task_poll_loop<H: TaskHandler>(agent: OpenClawAgent, handler: Arc<H>) {
                         stats.tasks_completed += 1;
                         metrics::gauge!("openclaw_tasks_in_progress").set(stats.tasks_in_progress as f64);
                         metrics::gauge!("openclaw_tasks_completed_total").set(stats.tasks_completed as f64);
+
+                        // Post task completion to Discord blackboard
+                        let _ = post_discord_status(
+                            "DISCORD_WEBHOOK",
+                            &agent.config.agent_id,
+                            "✅ Task Complete",
+                            &format!("Type: `{}` | Duration: {:.1}s | Total: {}", task.task_type, elapsed, stats.tasks_completed),
+                            DISCORD_GREEN,
+                        ).await;
                     }
                     Err(e) => {
                         let err_msg = format!("{:#}", e);
@@ -546,8 +567,17 @@ async fn task_poll_loop<H: TaskHandler>(agent: OpenClawAgent, handler: Arc<H>) {
                         }
                         let mut stats = agent.stats.lock().await;
                         stats.tasks_in_progress = stats.tasks_in_progress.saturating_sub(1);
-                        stats.last_error = Some(err_msg);
+                        stats.last_error = Some(err_msg.clone());
                         metrics::gauge!("openclaw_tasks_in_progress").set(stats.tasks_in_progress as f64);
+
+                        // Post task failure to Discord blackboard
+                        let _ = post_discord_status(
+                            "DISCORD_WEBHOOK",
+                            &agent.config.agent_id,
+                            "❌ Task Failed",
+                            &format!("Type: `{}`\n```\n{}\n```", task.task_type, &err_msg[..err_msg.len().min(500)]),
+                            DISCORD_RED,
+                        ).await;
                     }
                 }
             }
@@ -579,3 +609,72 @@ async fn root_handler() -> impl IntoResponse {
 }
 
 // metrics handler is inlined as a closure in run() to avoid state type conflicts
+
+// ---------------------------------------------------------------------------
+// Discord webhook helper — zero LLM cost blackboard posting
+// ---------------------------------------------------------------------------
+
+/// Post rich embeds to a Discord webhook. Reads URL from the given env var.
+/// Returns Ok(()) silently if env var is not set.
+pub async fn post_discord_embeds(
+    env_var: &str,
+    username: &str,
+    embeds: Vec<serde_json::Value>,
+) -> Result<()> {
+    let webhook_url = match std::env::var(env_var) {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(()),
+    };
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .context("failed to build webhook HTTP client")?;
+
+    let body = serde_json::json!({
+        "username": username,
+        "embeds": embeds,
+    });
+
+    let resp = http.post(&webhook_url)
+        .json(&body)
+        .send()
+        .await
+        .context("Discord webhook POST failed")?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Discord webhook returned {}: {}", status, text);
+    }
+
+    info!("Posted {} embed(s) to Discord", embeds.len());
+    Ok(())
+}
+
+/// Post a simple status message embed (green=online, red=error, yellow=warning)
+pub async fn post_discord_status(
+    env_var: &str,
+    agent_name: &str,
+    status: &str,
+    details: &str,
+    color: u32,
+) -> Result<()> {
+    let embed = serde_json::json!({
+        "title": format!("{} — {}", agent_name, status),
+        "description": details,
+        "color": color,
+        "timestamp": Utc::now().to_rfc3339(),
+        "footer": { "text": format!("openclaw-{} • Rust", agent_name.to_lowercase()) },
+    });
+    post_discord_embeds(env_var, agent_name, vec![embed]).await
+}
+
+// Common Discord embed colors
+pub const DISCORD_GREEN: u32 = 3066993;
+pub const DISCORD_RED: u32 = 15548997;
+pub const DISCORD_YELLOW: u32 = 16776960;
+pub const DISCORD_BLUE: u32 = 3447003;
+pub const DISCORD_GOLD: u32 = 15844367;
+pub const DISCORD_GRAY: u32 = 10070709;
+pub const DISCORD_ORANGE: u32 = 15105570;
