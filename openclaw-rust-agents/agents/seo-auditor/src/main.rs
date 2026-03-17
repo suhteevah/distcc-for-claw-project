@@ -433,6 +433,7 @@ async fn generate_analysis(
     page: &PageData,
     score: i32,
     issues: &[SeoIssue],
+    soul: &str,
 ) -> Result<String> {
     let issues_summary: Vec<String> = issues
         .iter()
@@ -490,8 +491,8 @@ Write concisely and professionally. Do not use bullet points or headers — just
     );
 
     let response = agent
-        .llm
-        .complete(&prompt, Some("heavy"), None, Some(4096), Some(0.4), false)
+        .groq()
+        .complete(&prompt, Some(openclaw_sdk::GroqModel::Smart), Some(soul), Some(4096), Some(0.4))
         .await
         .context("LLM analysis generation failed")?;
 
@@ -502,13 +503,13 @@ Write concisely and professionally. Do not use bullet points or headers — just
 // run_audit (shared logic for task handler and direct API)
 // ---------------------------------------------------------------------------
 
-async fn run_audit(agent: &OpenClawAgent, url: &str) -> Result<AuditResult> {
+async fn run_audit(agent: &OpenClawAgent, url: &str, soul: &str) -> Result<AuditResult> {
     info!(url = %url, "starting SEO audit");
 
     let page_data = fetch_page(url).await.context("failed to fetch page")?;
     let (score, issues) = score_page(&page_data);
 
-    let summary = match generate_analysis(agent, &page_data, score, &issues).await {
+    let summary = match generate_analysis(agent, &page_data, score, &issues, soul).await {
         Ok(s) => s,
         Err(e) => {
             error!(error = %e, "LLM analysis failed, using fallback summary");
@@ -539,7 +540,9 @@ async fn run_audit(agent: &OpenClawAgent, url: &str) -> Result<AuditResult> {
 // TaskHandler
 // ---------------------------------------------------------------------------
 
-struct SeoHandler;
+struct SeoHandler {
+    soul: Arc<String>,
+}
 
 #[async_trait::async_trait]
 impl TaskHandler for SeoHandler {
@@ -554,7 +557,7 @@ impl TaskHandler for SeoHandler {
             .and_then(|v| v.as_str())
             .context("task payload missing 'url' field")?;
 
-        let result = run_audit(agent, url).await?;
+        let result = run_audit(agent, url, &self.soul).await?;
         serde_json::to_value(result).context("failed to serialize audit result")
     }
 }
@@ -563,11 +566,17 @@ impl TaskHandler for SeoHandler {
 // Direct API endpoint
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
+struct AppState {
+    agent: Arc<OpenClawAgent>,
+    soul: Arc<String>,
+}
+
 async fn audit_endpoint(
-    State(agent): State<Arc<OpenClawAgent>>,
+    State(state): State<AppState>,
     Json(req): Json<AuditRequest>,
 ) -> impl IntoResponse {
-    match run_audit(&agent, &req.url).await {
+    match run_audit(&state.agent, &req.url, &state.soul).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => {
             let body = serde_json::json!({
@@ -585,12 +594,21 @@ async fn audit_endpoint(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
 
-    let shared_agent = Arc::new(agent.clone());
+    let soul = openclaw_sdk::load_soul(&config.agent_id).unwrap_or_else(|| {
+        "You are an SEO expert. Analyze page audit data and provide actionable recommendations."
+            .to_string()
+    });
+    let soul = Arc::new(soul);
+
+    let state = AppState {
+        agent: Arc::new(agent.clone()),
+        soul: soul.clone(),
+    };
     let routes = Router::new()
         .route("/audit", post(audit_endpoint))
-        .with_state(shared_agent);
+        .with_state(state);
 
-    agent.run(SeoHandler, routes).await
+    agent.run(SeoHandler { soul }, routes).await
 }

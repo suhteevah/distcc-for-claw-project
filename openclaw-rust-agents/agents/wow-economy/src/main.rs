@@ -96,6 +96,7 @@ struct AppState {
     agent: Arc<OpenClawAgent>,
     items: Arc<DashMap<String, ItemData>>,
     scan_history: Arc<Mutex<Vec<serde_json::Value>>>,
+    soul: Arc<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -391,7 +392,7 @@ struct TrendRequest {
     item_name: Option<String>,
 }
 
-async fn analyze_trend(agent: &OpenClawAgent, items: &DashMap<String, ItemData>, req: &TrendRequest) -> Result<serde_json::Value> {
+async fn analyze_trend(agent: &OpenClawAgent, items: &DashMap<String, ItemData>, req: &TrendRequest, soul: &str) -> Result<serde_json::Value> {
     // Find the item by ID or by name (case-insensitive partial match)
     let item = if let Some(id) = &req.item_id {
         items.get(id).map(|e| e.value().clone())
@@ -485,9 +486,13 @@ Respond ONLY with the JSON object, no other text."#,
         similar_context,
     );
 
+    let messages = vec![
+        openclaw_sdk::ChatMessage { role: "system".into(), content: soul.to_string() },
+        openclaw_sdk::ChatMessage { role: "user".into(), content: prompt },
+    ];
     let llm_response = agent
-        .llm
-        .complete(&prompt, Some("standard"), None, Some(1024), Some(0.3), true)
+        .groq()
+        .chat(messages, Some(openclaw_sdk::GroqModel::Fast), Some(1024), Some(0.3), true)
         .await;
 
     let analysis = match llm_response {
@@ -554,7 +559,7 @@ async fn trend_endpoint(
     State(state): State<AppState>,
     Json(req): Json<TrendRequest>,
 ) -> impl IntoResponse {
-    match analyze_trend(&state.agent, &state.items, &req).await {
+    match analyze_trend(&state.agent, &state.items, &req, &state.soul).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => {
             let body = serde_json::json!({ "error": format!("{:#}", e) });
@@ -635,6 +640,7 @@ async fn items_endpoint(
 struct WowEconomyHandler {
     items: Arc<DashMap<String, ItemData>>,
     scan_history: Arc<Mutex<Vec<serde_json::Value>>>,
+    soul: Arc<String>,
 }
 
 #[async_trait::async_trait]
@@ -713,7 +719,7 @@ impl TaskHandler for WowEconomyHandler {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
                 };
-                analyze_trend(agent, &self.items, &req).await
+                analyze_trend(agent, &self.items, &req, &self.soul).await
             }
 
             other => {
@@ -730,7 +736,12 @@ impl TaskHandler for WowEconomyHandler {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
+
+    let soul = Arc::new(
+        openclaw_sdk::load_soul(&config.agent_id)
+            .unwrap_or_else(|| "You are a World of Warcraft economy analyst.".to_string()),
+    );
 
     let items: Arc<DashMap<String, ItemData>> = Arc::new(DashMap::new());
     let scan_history: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
@@ -738,12 +749,14 @@ async fn main() -> anyhow::Result<()> {
     let handler = WowEconomyHandler {
         items: items.clone(),
         scan_history: scan_history.clone(),
+        soul: soul.clone(),
     };
 
     let state = AppState {
         agent: Arc::new(agent.clone()),
         items,
         scan_history,
+        soul,
     };
 
     let routes = Router::new()

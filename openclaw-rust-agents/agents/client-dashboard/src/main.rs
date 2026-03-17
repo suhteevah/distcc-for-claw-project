@@ -96,6 +96,7 @@ struct AppState {
     agent: Arc<OpenClawAgent>,
     clients: Arc<DashMap<String, ClientInfo>>,
     reports: Arc<Mutex<Vec<serde_json::Value>>>,
+    soul: Arc<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,7 @@ async fn generate_weekly_report(
     include_seo: bool,
     include_content: bool,
     include_recommendations: bool,
+    soul: &str,
 ) -> Result<serde_json::Value> {
     let period = period_start.unwrap_or("last 7 days");
 
@@ -155,14 +157,13 @@ Format as a clean text report suitable for email delivery."#,
     );
 
     let response = agent
-        .llm
+        .groq()
         .complete(
             &prompt,
-            Some("heavy"),
-            Some("You are a digital marketing consultant writing client reports."),
+            Some(openclaw_sdk::GroqModel::Smart),
+            Some(soul),
             Some(4096),
             Some(0.4),
-            false,
         )
         .await
         .context("LLM weekly report generation failed")?;
@@ -189,6 +190,7 @@ async fn generate_monthly_report(
     agent: &OpenClawAgent,
     client: &ClientInfo,
     month: Option<&str>,
+    soul: &str,
 ) -> Result<serde_json::Value> {
     let month_label = month.unwrap_or("current month");
 
@@ -242,14 +244,13 @@ Format as a polished report suitable for C-level review."#,
     );
 
     let response = agent
-        .llm
+        .groq()
         .complete(
             &prompt,
-            Some("heavy"),
-            Some("You are a digital marketing consultant writing client reports."),
+            Some(openclaw_sdk::GroqModel::Smart),
+            Some(soul),
             Some(6144),
             Some(0.4),
-            false,
         )
         .await
         .context("LLM monthly report generation failed")?;
@@ -353,7 +354,9 @@ async fn run_seo_tracking(
 // TaskHandler
 // ---------------------------------------------------------------------------
 
-struct DashboardHandler;
+struct DashboardHandler {
+    soul: Arc<String>,
+}
 
 #[async_trait::async_trait]
 impl TaskHandler for DashboardHandler {
@@ -427,6 +430,7 @@ impl TaskHandler for DashboardHandler {
                     include_seo,
                     include_content,
                     include_recommendations,
+                    &self.soul,
                 )
                 .await?;
 
@@ -475,7 +479,7 @@ impl TaskHandler for DashboardHandler {
                     created_at: now_rfc3339(),
                 };
 
-                let report = generate_monthly_report(agent, &client, month).await?;
+                let report = generate_monthly_report(agent, &client, month, &self.soul).await?;
                 Ok(report)
             }
 
@@ -632,6 +636,7 @@ async fn weekly_report_endpoint(
         req.include_seo,
         req.include_content,
         req.include_recommendations,
+        &state.soul,
     )
     .await
     {
@@ -669,7 +674,7 @@ async fn monthly_report_endpoint(
         }
     };
 
-    match generate_monthly_report(&state.agent, &client, req.month.as_deref()).await {
+    match generate_monthly_report(&state.agent, &client, req.month.as_deref(), &state.soul).await {
         Ok(report) => {
             let mut reports = state.reports.lock().await;
             reports.push(report.clone());
@@ -763,12 +768,18 @@ async fn seo_track_endpoint(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
+
+    let soul = openclaw_sdk::load_soul(&config.agent_id).unwrap_or_else(|| {
+        "You are a digital marketing consultant writing client reports.".to_string()
+    });
+    let soul = Arc::new(soul);
 
     let app_state = AppState {
         agent: Arc::new(agent.clone()),
         clients: Arc::new(DashMap::new()),
         reports: Arc::new(Mutex::new(Vec::new())),
+        soul: Arc::clone(&soul),
     };
 
     let routes = Router::new()
@@ -781,5 +792,5 @@ async fn main() -> anyhow::Result<()> {
         .route("/seo-track", post(seo_track_endpoint))
         .with_state(app_state);
 
-    agent.run(DashboardHandler, routes).await
+    agent.run(DashboardHandler { soul }, routes).await
 }

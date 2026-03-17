@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+/// Process-wide soul text, loaded once at startup.
+static SOUL: OnceLock<String> = OnceLock::new();
 
 use anyhow::{Context, Result};
 use axum::{
@@ -11,7 +14,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use openclaw_sdk::{AgentConfig, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler, load_soul};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -222,19 +225,17 @@ async fn llm_json<T: serde::de::DeserializeOwned>(
     prompt: &str,
     max_tokens: u32,
     temperature: f32,
+    soul: &str,
 ) -> Result<T> {
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt.to_string() },
+    ];
     let response = agent
-        .llm
-        .complete(
-            prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(max_tokens),
-            Some(temperature),
-            true,
-        )
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(max_tokens), Some(temperature), true)
         .await
-        .context("LLM request failed")?;
+        .context("Groq LLM request failed")?;
 
     let json_str = extract_json(&response.text);
 
@@ -280,19 +281,13 @@ async fn llm_text(
     prompt: &str,
     max_tokens: u32,
     temperature: f32,
+    soul: &str,
 ) -> Result<String> {
     let response = agent
-        .llm
-        .complete(
-            prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(max_tokens),
-            Some(temperature),
-            false,
-        )
+        .groq()
+        .complete(prompt, Some(GroqModel::Smart), Some(soul), Some(max_tokens), Some(temperature))
         .await
-        .context("LLM request failed")?;
+        .context("Groq LLM request failed")?;
 
     Ok(response.text)
 }
@@ -301,7 +296,7 @@ async fn llm_text(
 // Task implementations
 // ---------------------------------------------------------------------------
 
-async fn run_code_review(agent: &OpenClawAgent, req: &ReviewRequest) -> Result<ReviewResult> {
+async fn run_code_review(agent: &OpenClawAgent, req: &ReviewRequest, soul: &str) -> Result<ReviewResult> {
     info!(language = %req.language, code_len = req.code.len(), "starting code review");
 
     let context_section = match &req.context {
@@ -338,12 +333,13 @@ Be thorough but fair. Only report real issues, not stylistic preferences unless 
         context = context_section,
     );
 
-    llm_json::<ReviewResult>(agent, &prompt, 8192, 0.3).await
+    llm_json::<ReviewResult>(agent, &prompt, 8192, 0.3, soul).await
 }
 
 async fn run_code_generation(
     agent: &OpenClawAgent,
     req: &GenerateRequest,
+    soul: &str,
 ) -> Result<GenerateResult> {
     info!(language = %req.language, "starting code generation");
 
@@ -384,7 +380,7 @@ Write production-quality code with proper error handling. Include comprehensive 
         constraints = constraints_section,
     );
 
-    let raw = llm_text(agent, &prompt, 8192, 0.4).await?;
+    let raw = llm_text(agent, &prompt, 8192, 0.4, soul).await?;
 
     // Parse the sectioned response
     let code = extract_section(&raw, "===IMPLEMENTATION===", "===TESTS===")
@@ -462,7 +458,7 @@ fn strip_code_fences(text: &str) -> String {
     trimmed.to_string()
 }
 
-async fn run_bug_fix(agent: &OpenClawAgent, req: &BugFixRequest) -> Result<BugFixResult> {
+async fn run_bug_fix(agent: &OpenClawAgent, req: &BugFixRequest, soul: &str) -> Result<BugFixResult> {
     info!(language = %req.language, "starting bug fix");
 
     let error_section = match &req.error_message {
@@ -494,10 +490,10 @@ Preserve the original code structure as much as possible. Only change what is ne
         error = error_section,
     );
 
-    llm_json::<BugFixResult>(agent, &prompt, 6144, 0.2).await
+    llm_json::<BugFixResult>(agent, &prompt, 6144, 0.2, soul).await
 }
 
-async fn run_refactor(agent: &OpenClawAgent, req: &RefactorRequest) -> Result<RefactorResult> {
+async fn run_refactor(agent: &OpenClawAgent, req: &RefactorRequest, soul: &str) -> Result<RefactorResult> {
     info!(language = %req.language, goals = ?req.goals, "starting refactor");
 
     let goals_list: Vec<String> = req.goals.iter().map(|g| format!("- {}", g)).collect();
@@ -526,12 +522,13 @@ Preserve external behavior (same inputs produce same outputs). The refactored co
         goals = goals_list.join("\n"),
     );
 
-    llm_json::<RefactorResult>(agent, &prompt, 8192, 0.3).await
+    llm_json::<RefactorResult>(agent, &prompt, 8192, 0.3, soul).await
 }
 
 async fn run_documentation(
     agent: &OpenClawAgent,
     req: &DocumentationRequest,
+    soul: &str,
 ) -> Result<DocumentationResult> {
     info!(language = %req.language, doc_type = %req.doc_type, "starting documentation");
 
@@ -617,7 +614,7 @@ Write clear, accurate documentation that would help a developer understand and u
         schema = schema_str,
     );
 
-    llm_json::<DocumentationResult>(agent, &prompt, 6144, 0.4).await
+    llm_json::<DocumentationResult>(agent, &prompt, 6144, 0.4, soul).await
 }
 
 // ---------------------------------------------------------------------------
@@ -629,35 +626,36 @@ struct CoderHandler;
 #[async_trait::async_trait]
 impl TaskHandler for CoderHandler {
     async fn handle(&self, agent: &OpenClawAgent, task: &Task) -> Result<serde_json::Value> {
+        let soul = SOUL.get().expect("SOUL not initialized");
         match task.task_type.as_str() {
             "code_review" => {
                 let req: ReviewRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid code_review payload")?;
-                let result = run_code_review(agent, &req).await?;
+                let result = run_code_review(agent, &req, soul).await?;
                 serde_json::to_value(result).context("failed to serialize review result")
             }
             "code_generation" => {
                 let req: GenerateRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid code_generation payload")?;
-                let result = run_code_generation(agent, &req).await?;
+                let result = run_code_generation(agent, &req, soul).await?;
                 serde_json::to_value(result).context("failed to serialize generation result")
             }
             "bug_fix" => {
                 let req: BugFixRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid bug_fix payload")?;
-                let result = run_bug_fix(agent, &req).await?;
+                let result = run_bug_fix(agent, &req, soul).await?;
                 serde_json::to_value(result).context("failed to serialize bug fix result")
             }
             "refactor" => {
                 let req: RefactorRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid refactor payload")?;
-                let result = run_refactor(agent, &req).await?;
+                let result = run_refactor(agent, &req, soul).await?;
                 serde_json::to_value(result).context("failed to serialize refactor result")
             }
             "documentation" => {
                 let req: DocumentationRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid documentation payload")?;
-                let result = run_documentation(agent, &req).await?;
+                let result = run_documentation(agent, &req, soul).await?;
                 serde_json::to_value(result).context("failed to serialize documentation result")
             }
             other => {
@@ -675,7 +673,8 @@ async fn review_endpoint(
     State(agent): State<Arc<OpenClawAgent>>,
     Json(req): Json<ReviewRequest>,
 ) -> impl IntoResponse {
-    match run_code_review(&agent, &req).await {
+    let soul = SOUL.get().expect("SOUL not initialized");
+    match run_code_review(&agent, &req, soul).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -696,7 +695,8 @@ async fn generate_endpoint(
     State(agent): State<Arc<OpenClawAgent>>,
     Json(req): Json<GenerateRequest>,
 ) -> impl IntoResponse {
-    match run_code_generation(&agent, &req).await {
+    let soul = SOUL.get().expect("SOUL not initialized");
+    match run_code_generation(&agent, &req, soul).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -717,7 +717,8 @@ async fn fix_endpoint(
     State(agent): State<Arc<OpenClawAgent>>,
     Json(req): Json<BugFixRequest>,
 ) -> impl IntoResponse {
-    match run_bug_fix(&agent, &req).await {
+    let soul = SOUL.get().expect("SOUL not initialized");
+    match run_bug_fix(&agent, &req, soul).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -738,7 +739,8 @@ async fn refactor_endpoint(
     State(agent): State<Arc<OpenClawAgent>>,
     Json(req): Json<RefactorRequest>,
 ) -> impl IntoResponse {
-    match run_refactor(&agent, &req).await {
+    let soul = SOUL.get().expect("SOUL not initialized");
+    match run_refactor(&agent, &req, soul).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -759,7 +761,8 @@ async fn docs_endpoint(
     State(agent): State<Arc<OpenClawAgent>>,
     Json(req): Json<DocumentationRequest>,
 ) -> impl IntoResponse {
-    match run_documentation(&agent, &req).await {
+    let soul = SOUL.get().expect("SOUL not initialized");
+    match run_documentation(&agent, &req, soul).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -783,6 +786,8 @@ async fn docs_endpoint(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
+    let soul = load_soul(&config.agent_id).unwrap_or_else(|| SYSTEM_PROMPT.to_string());
+    SOUL.set(soul).expect("SOUL already initialized");
     let agent = OpenClawAgent::new(config);
 
     let shared_agent = Arc::new(agent.clone());

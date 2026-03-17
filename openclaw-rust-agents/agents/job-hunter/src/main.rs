@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
-use openclaw_sdk::{AgentConfig, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler};
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -136,6 +136,7 @@ async fn save_results(results: &[ScoredJob]) {
 #[derive(Clone)]
 struct AppState {
     agent: Arc<OpenClawAgent>,
+    soul: String,
     submissions: Arc<Mutex<Vec<serde_json::Value>>>,
     scored_jobs: Arc<Mutex<Vec<ScoredJob>>>,
 }
@@ -254,6 +255,7 @@ Ridge Cell Repair LLC — Matt Gates — Core Skills:
 
 async fn score_upwork_job(
     agent: &OpenClawAgent,
+    soul: &str,
     req: &ScoreJobRequest,
 ) -> Result<ScoreJobResult> {
     let prompt = format!(
@@ -296,11 +298,15 @@ Be harsh — only PURSUE jobs we can genuinely dominate."#,
         skills = RIDGE_CELL_SKILLS,
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let response = agent
-        .llm
-        .complete(&prompt, Some("heavy"), None, Some(4096), Some(0.3), true)
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(4096), Some(0.3), true)
         .await
-        .context("LLM job scoring failed")?;
+        .context("Groq job scoring failed")?;
 
     let result: ScoreJobResult = serde_json::from_str(&response.text)
         .context("failed to parse LLM job score response as JSON")?;
@@ -314,6 +320,7 @@ Be harsh — only PURSUE jobs we can genuinely dominate."#,
 
 async fn generate_cover_letter(
     agent: &OpenClawAgent,
+    soul: &str,
     req: &CoverLetterRequest,
 ) -> Result<String> {
     let tone = req.tone.as_deref().unwrap_or("professional yet personable");
@@ -356,10 +363,10 @@ Write the cover letter now."#,
     );
 
     let response = agent
-        .llm
-        .complete(&prompt, Some("heavy"), None, Some(4096), Some(0.7), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(4096), Some(0.7))
         .await
-        .context("LLM cover letter generation failed")?;
+        .context("Groq cover letter generation failed")?;
 
     Ok(response.text)
 }
@@ -370,6 +377,7 @@ Write the cover letter now."#,
 
 async fn score_resume_match(
     agent: &OpenClawAgent,
+    soul: &str,
     req: &ResumeMatchRequest,
 ) -> Result<ResumeMatchResult> {
     let prompt = format!(
@@ -401,11 +409,15 @@ Be specific and reference actual content from both the resume and job descriptio
         req.job_description, req.resume,
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let response = agent
-        .llm
-        .complete(&prompt, Some("heavy"), None, Some(4096), Some(0.3), true)
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(4096), Some(0.3), true)
         .await
-        .context("LLM resume match scoring failed")?;
+        .context("Groq resume match scoring failed")?;
 
     let result: ResumeMatchResult = serde_json::from_str(&response.text)
         .context("failed to parse LLM resume match response as JSON")?;
@@ -418,6 +430,7 @@ Be specific and reference actual content from both the resume and job descriptio
 // ---------------------------------------------------------------------------
 
 struct JobHunterHandler {
+    soul: String,
     submissions: Arc<Mutex<Vec<serde_json::Value>>>,
     scored_jobs: Arc<Mutex<Vec<ScoredJob>>>,
 }
@@ -469,7 +482,7 @@ impl TaskHandler for JobHunterHandler {
             "cover_letter" => {
                 let req: CoverLetterRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid cover_letter payload")?;
-                let letter = generate_cover_letter(agent, &req).await?;
+                let letter = generate_cover_letter(agent, &self.soul, &req).await?;
                 Ok(serde_json::json!({
                     "status": "completed",
                     "cover_letter": letter,
@@ -480,7 +493,7 @@ impl TaskHandler for JobHunterHandler {
             "resume_match" => {
                 let req: ResumeMatchRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid resume_match payload")?;
-                let result = score_resume_match(agent, &req).await?;
+                let result = score_resume_match(agent, &self.soul, &req).await?;
                 serde_json::to_value(result).context("failed to serialize resume match result")
             }
 
@@ -488,7 +501,7 @@ impl TaskHandler for JobHunterHandler {
                 let req: ScoreJobRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid score_job payload")?;
                 info!(job_title = %req.job_title, "scoring upwork job");
-                let mut result = score_upwork_job(agent, &req).await?;
+                let mut result = score_upwork_job(agent, &self.soul, &req).await?;
 
                 // Scrape connect cost if we have a job URL
                 if let Some(ref url) = req.job_url {
@@ -607,7 +620,7 @@ async fn cover_letter_endpoint(
     State(state): State<AppState>,
     Json(req): Json<CoverLetterRequest>,
 ) -> impl IntoResponse {
-    match generate_cover_letter(&state.agent, &req).await {
+    match generate_cover_letter(&state.agent, &state.soul, &req).await {
         Ok(letter) => {
             let body = serde_json::json!({
                 "status": "completed",
@@ -630,7 +643,7 @@ async fn resume_match_endpoint(
     State(state): State<AppState>,
     Json(req): Json<ResumeMatchRequest>,
 ) -> impl IntoResponse {
-    match score_resume_match(&state.agent, &req).await {
+    match score_resume_match(&state.agent, &state.soul, &req).await {
         Ok(result) => {
             let body = serde_json::to_value(result).unwrap();
             (StatusCode::OK, Json(body)).into_response()
@@ -732,7 +745,7 @@ async fn propose_endpoint(
         highlights: Some(job.strengths.clone()),
     };
 
-    match generate_cover_letter(&state.agent, &letter_req).await {
+    match generate_cover_letter(&state.agent, &state.soul, &letter_req).await {
         Ok(letter) => {
             let connect_cost = req.connect_cost.or(job.connect_cost);
             let bid = req.bid_amount.unwrap_or_else(|| {
@@ -1008,7 +1021,10 @@ function copyLetter() {{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
+
+    let soul = openclaw_sdk::load_soul(&config.agent_id)
+        .unwrap_or_else(|| "You are an expert job application strategist.".to_string());
 
     let submissions: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
     let scored_jobs: Arc<Mutex<Vec<ScoredJob>>> = Arc::new(Mutex::new(load_results().await));
@@ -1016,6 +1032,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app_state = AppState {
         agent: Arc::new(agent.clone()),
+        soul: soul.clone(),
         submissions: submissions.clone(),
         scored_jobs: scored_jobs.clone(),
     };
@@ -1032,6 +1049,7 @@ async fn main() -> anyhow::Result<()> {
         .with_state(app_state);
 
     let handler = JobHunterHandler {
+        soul,
         submissions,
         scored_jobs,
     };

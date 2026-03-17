@@ -12,7 +12,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use openclaw_sdk::{AgentConfig, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -138,6 +138,7 @@ counsel review.";
 
 async fn handle_contract_review(
     agent: &OpenClawAgent,
+    soul: &str,
     contract_text: &str,
     contract_type: Option<&str>,
 ) -> Result<ContractReviewResult> {
@@ -176,18 +177,15 @@ Focus on risks relevant to a small business (Ridge Cell Repair LLC).
 Respond ONLY with the JSON object, no other text."#
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let response = agent
-        .llm
-        .complete(
-            &prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(8192),
-            Some(0.3),
-            true,
-        )
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(8192), Some(0.3), true)
         .await
-        .context("LLM contract review failed")?;
+        .context("Groq contract review failed")?;
 
     let parsed: serde_json::Value =
         serde_json::from_str(&response.text).context("failed to parse LLM JSON response")?;
@@ -243,6 +241,7 @@ Respond ONLY with the JSON object, no other text."#
 
 async fn handle_legal_draft(
     agent: &OpenClawAgent,
+    soul: &str,
     document_type: &str,
     parties: &[String],
     key_terms: &serde_json::Value,
@@ -288,17 +287,10 @@ Generate the complete document text. Do not include any preamble or explanation 
     );
 
     let response = agent
-        .llm
-        .complete(
-            &prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(8192),
-            Some(0.3),
-            false,
-        )
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(8192), Some(0.3))
         .await
-        .context("LLM legal draft generation failed")?;
+        .context("Groq legal draft generation failed")?;
 
     Ok(LegalDraftResult {
         document_type: document_type.to_string(),
@@ -311,6 +303,7 @@ Generate the complete document text. Do not include any preamble or explanation 
 
 async fn handle_compliance_research(
     agent: &OpenClawAgent,
+    soul: &str,
     business_type: &str,
     jurisdiction: &str,
     specific_questions: Option<&[String]>,
@@ -349,18 +342,15 @@ code references where possible. Focus on practical, actionable information.
 Respond ONLY with the JSON object, no other text."#
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let response = agent
-        .llm
-        .complete(
-            &prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(6144),
-            Some(0.4),
-            true,
-        )
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(6144), Some(0.4), true)
         .await
-        .context("LLM compliance research failed")?;
+        .context("Groq compliance research failed")?;
 
     let parsed: serde_json::Value =
         serde_json::from_str(&response.text).context("failed to parse LLM JSON response")?;
@@ -418,6 +408,7 @@ Respond ONLY with the JSON object, no other text."#
 
 async fn handle_dispute_letter(
     agent: &OpenClawAgent,
+    soul: &str,
     dispute_type: &str,
     counterparty: &str,
     amount: Option<f64>,
@@ -472,18 +463,15 @@ Respond with a JSON object:
 Respond ONLY with the JSON object, no other text."#
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let response = agent
-        .llm
-        .complete(
-            &prompt,
-            Some("heavy"),
-            Some(SYSTEM_PROMPT),
-            Some(4096),
-            Some(0.3),
-            true,
-        )
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(4096), Some(0.3), true)
         .await
-        .context("LLM dispute letter generation failed")?;
+        .context("Groq dispute letter generation failed")?;
 
     let parsed: serde_json::Value =
         serde_json::from_str(&response.text).context("failed to parse LLM JSON response")?;
@@ -519,7 +507,9 @@ Respond ONLY with the JSON object, no other text."#
 // TaskHandler implementation
 // ---------------------------------------------------------------------------
 
-struct LegalHandler;
+struct LegalHandler {
+    soul: String,
+}
 
 #[async_trait::async_trait]
 impl TaskHandler for LegalHandler {
@@ -538,7 +528,7 @@ impl TaskHandler for LegalHandler {
                     .and_then(|v| v.as_str());
 
                 let result =
-                    handle_contract_review(agent, contract_text, contract_type).await?;
+                    handle_contract_review(agent, &self.soul, contract_text, contract_type).await?;
                 serde_json::to_value(result).context("failed to serialize contract review result")
             }
 
@@ -565,7 +555,7 @@ impl TaskHandler for LegalHandler {
                     .unwrap_or_else(|| serde_json::json!({}));
 
                 let result =
-                    handle_legal_draft(agent, document_type, &parties, &key_terms).await?;
+                    handle_legal_draft(agent, &self.soul, document_type, &parties, &key_terms).await?;
                 serde_json::to_value(result).context("failed to serialize legal draft result")
             }
 
@@ -592,7 +582,7 @@ impl TaskHandler for LegalHandler {
 
                 let qs_ref = specific_questions.as_deref();
                 let result =
-                    handle_compliance_research(agent, business_type, jurisdiction, qs_ref).await?;
+                    handle_compliance_research(agent, &self.soul, business_type, jurisdiction, qs_ref).await?;
                 serde_json::to_value(result)
                     .context("failed to serialize compliance research result")
             }
@@ -629,6 +619,7 @@ impl TaskHandler for LegalHandler {
 
                 let result = handle_dispute_letter(
                     agent,
+                    &self.soul,
                     dispute_type,
                     counterparty,
                     amount,
@@ -648,15 +639,25 @@ impl TaskHandler for LegalHandler {
 }
 
 // ---------------------------------------------------------------------------
+// Shared state for direct API endpoints
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct AppState {
+    agent: Arc<OpenClawAgent>,
+    soul: String,
+}
+
+// ---------------------------------------------------------------------------
 // Direct API endpoints
 // ---------------------------------------------------------------------------
 
 async fn review_endpoint(
-    State(agent): State<Arc<OpenClawAgent>>,
+    State(state): State<AppState>,
     Json(req): Json<ContractReviewRequest>,
 ) -> impl IntoResponse {
     info!("direct API: contract_review");
-    match handle_contract_review(&agent, &req.contract_text, req.contract_type.as_deref()).await {
+    match handle_contract_review(&state.agent, &state.soul, &req.contract_text, req.contract_type.as_deref()).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -674,11 +675,11 @@ async fn review_endpoint(
 }
 
 async fn draft_endpoint(
-    State(agent): State<Arc<OpenClawAgent>>,
+    State(state): State<AppState>,
     Json(req): Json<LegalDraftRequest>,
 ) -> impl IntoResponse {
     info!(document_type = %req.document_type, "direct API: legal_draft");
-    match handle_legal_draft(&agent, &req.document_type, &req.parties, &req.key_terms).await {
+    match handle_legal_draft(&state.agent, &state.soul, &req.document_type, &req.parties, &req.key_terms).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -696,7 +697,7 @@ async fn draft_endpoint(
 }
 
 async fn compliance_endpoint(
-    State(agent): State<Arc<OpenClawAgent>>,
+    State(state): State<AppState>,
     Json(req): Json<ComplianceResearchRequest>,
 ) -> impl IntoResponse {
     info!(
@@ -705,7 +706,7 @@ async fn compliance_endpoint(
         "direct API: compliance_research"
     );
     let qs_ref = req.specific_questions.as_deref();
-    match handle_compliance_research(&agent, &req.business_type, &req.jurisdiction, qs_ref).await {
+    match handle_compliance_research(&state.agent, &state.soul, &req.business_type, &req.jurisdiction, qs_ref).await {
         Ok(result) => (
             StatusCode::OK,
             Json(serde_json::to_value(result).unwrap()),
@@ -723,7 +724,7 @@ async fn compliance_endpoint(
 }
 
 async fn dispute_endpoint(
-    State(agent): State<Arc<OpenClawAgent>>,
+    State(state): State<AppState>,
     Json(req): Json<DisputeLetterRequest>,
 ) -> impl IntoResponse {
     info!(
@@ -732,7 +733,8 @@ async fn dispute_endpoint(
         "direct API: dispute_letter"
     );
     match handle_dispute_letter(
-        &agent,
+        &state.agent,
+        &state.soul,
         &req.dispute_type,
         &req.counterparty,
         req.amount,
@@ -764,15 +766,20 @@ async fn dispute_endpoint(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::from_env()?;
+    let soul = openclaw_sdk::load_soul(&config.agent_id)
+        .unwrap_or_else(|| SYSTEM_PROMPT.to_string());
     let agent = OpenClawAgent::new(config);
 
-    let shared_agent = Arc::new(agent.clone());
+    let state = AppState {
+        agent: Arc::new(agent.clone()),
+        soul: soul.clone(),
+    };
     let routes = Router::new()
         .route("/review", post(review_endpoint))
         .route("/draft", post(draft_endpoint))
         .route("/compliance", post(compliance_endpoint))
         .route("/dispute", post(dispute_endpoint))
-        .with_state(shared_agent);
+        .with_state(state);
 
-    agent.run(LegalHandler, routes).await
+    agent.run(LegalHandler { soul }, routes).await
 }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use axum::{
@@ -13,6 +14,197 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
+
+pub mod groq;
+pub use groq::{GroqClient, Model as GroqModel};
+
+// ---------------------------------------------------------------------------
+// Soul (system prompt) loader with SHA-256 integrity verification
+// ---------------------------------------------------------------------------
+
+/// Compute SHA-256 hex digest of a byte slice.
+fn sha256_hex(data: &[u8]) -> String {
+    use std::fmt::Write;
+    // Minimal SHA-256 — we inline the constants to avoid adding a crate dep.
+    // Uses the standard FIPS 180-4 algorithm.
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ];
+
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    ];
+
+    // Pre-processing: padding
+    let bit_len = (data.len() as u64) * 8;
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while (msg.len() % 64) != 56 {
+        msg.push(0x00);
+    }
+    msg.extend_from_slice(&bit_len.to_be_bytes());
+
+    // Process each 512-bit (64-byte) block
+    for chunk in msg.chunks(64) {
+        let mut w = [0u32; 64];
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes([chunk[i*4], chunk[i*4+1], chunk[i*4+2], chunk[i*4+3]]);
+        }
+        for i in 16..64 {
+            let s0 = w[i-15].rotate_right(7) ^ w[i-15].rotate_right(18) ^ (w[i-15] >> 3);
+            let s1 = w[i-2].rotate_right(17) ^ w[i-2].rotate_right(19) ^ (w[i-2] >> 10);
+            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
+        for i in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let t2 = s0.wrapping_add(maj);
+            hh = g; g = f; f = e; e = d.wrapping_add(t1);
+            d = c; c = b; b = a; a = t1.wrapping_add(t2);
+        }
+        h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c); h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e); h[5] = h[5].wrapping_add(f);
+        h[6] = h[6].wrapping_add(g); h[7] = h[7].wrapping_add(hh);
+    }
+
+    let mut hex = String::with_capacity(64);
+    for val in &h {
+        write!(hex, "{:08x}", val).unwrap();
+    }
+    hex
+}
+
+/// Load the soul hash manifest from `/opt/openclaw/souls/MANIFEST.sha256`
+/// or `SOUL_MANIFEST_PATH` env var. Format: `<sha256>  <agent-id>` per line.
+fn load_soul_manifest() -> HashMap<String, String> {
+    let manifest_path = std::env::var("SOUL_MANIFEST_PATH")
+        .unwrap_or_else(|_| "/opt/openclaw/souls/MANIFEST.sha256".to_string());
+
+    let mut map = HashMap::new();
+    if let Ok(contents) = std::fs::read_to_string(&manifest_path) {
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            // Format: "<hash>  <agent-id>" (two spaces, matching sha256sum output)
+            if let Some((hash, agent_id)) = line.split_once("  ") {
+                map.insert(agent_id.trim().to_string(), hash.trim().to_string());
+            }
+        }
+    }
+    map
+}
+
+/// Load a soul.md file for an agent with SHA-256 integrity verification.
+///
+/// Search order:
+/// 1. `SOUL_PATH` env var (explicit override)
+/// 2. `/opt/openclaw/souls/{agent_id}.md`
+/// 3. `./soul.md` (local development)
+///
+/// After loading, verifies the SHA-256 hash against `MANIFEST.sha256`.
+/// If the manifest exists and the hash doesn't match, the soul is REJECTED
+/// and the function returns None (agent falls back to hardcoded default).
+///
+/// If no manifest exists (dev mode), loads without verification but logs a warning.
+pub fn load_soul(agent_id: &str) -> Option<String> {
+    let manifest = load_soul_manifest();
+
+    let paths_to_try: Vec<String> = {
+        let mut v = Vec::new();
+        if let Ok(path) = std::env::var("SOUL_PATH") {
+            v.push(path);
+        }
+        v.push(format!("/opt/openclaw/souls/{}.md", agent_id));
+        v.push("./soul.md".to_string());
+        v
+    };
+
+    for path in &paths_to_try {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            // Normalize: strip \r (Windows line endings), then trim whitespace
+            let normalized = contents.replace('\r', "");
+            let trimmed = normalized.trim().to_string();
+            let hash = sha256_hex(trimmed.as_bytes());
+
+            if let Some(expected_hash) = manifest.get(agent_id) {
+                if hash == *expected_hash {
+                    // Use eprintln for soul messages — runs before tracing init
+                    eprintln!("[SOUL] {} ✓ verified (sha256:{}..{}) from {}",
+                        agent_id, &hash[..8], &hash[56..], path);
+                    return Some(trimmed);
+                } else {
+                    eprintln!("[SOUL] {} ✗ INTEGRITY FAILURE — expected {}..{}, got {}..{} — REJECTING from {}",
+                        agent_id, &expected_hash[..8], &expected_hash[56..],
+                        &hash[..8], &hash[56..], path);
+                    return None; // Reject — fall back to hardcoded
+                }
+            } else if !manifest.is_empty() {
+                // Manifest exists but no entry for this agent
+                eprintln!("[SOUL] {} ⚠ loaded but not in manifest (sha256:{}..{}) from {}",
+                    agent_id, &hash[..8], &hash[56..], path);
+                return Some(trimmed);
+            } else {
+                // No manifest at all (dev mode)
+                eprintln!("[SOUL] {} ⚠ loaded UNVERIFIED — no MANIFEST.sha256 found (sha256:{}..{}) from {}",
+                    agent_id, &hash[..8], &hash[56..], path);
+                return Some(trimmed);
+            }
+        }
+    }
+
+    eprintln!("[SOUL] {} ✗ no soul.md found — using hardcoded fallback", agent_id);
+    None
+}
+
+/// Generate a MANIFEST.sha256 for all soul files in a directory.
+/// Useful for deployment: run once, commit the manifest, then agents verify at startup.
+pub fn generate_soul_manifest(souls_dir: &str) -> Result<String> {
+    let mut manifest = String::new();
+    manifest.push_str("# OpenClaw Soul Manifest — SHA-256 integrity hashes\n");
+    manifest.push_str("# Generated by openclaw-sdk::generate_soul_manifest()\n");
+    manifest.push_str(&format!("# Date: {}\n", Utc::now().to_rfc3339()));
+    manifest.push_str("#\n");
+
+    let mut entries: Vec<(String, String)> = Vec::new();
+
+    for entry in std::fs::read_dir(souls_dir)
+        .context(format!("failed to read souls directory: {}", souls_dir))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "md").unwrap_or(false) {
+            let contents = std::fs::read_to_string(&path)?;
+            let normalized = contents.replace('\r', "");
+            let trimmed = normalized.trim().to_string();
+            let hash = sha256_hex(trimmed.as_bytes());
+            let agent_id = path.file_stem().unwrap().to_string_lossy().to_string();
+            entries.push((agent_id, hash));
+        }
+    }
+
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (agent_id, hash) in &entries {
+        manifest.push_str(&format!("{}  {}\n", hash, agent_id));
+    }
+
+    Ok(manifest)
+}
 
 // ---------------------------------------------------------------------------
 // AgentConfig
@@ -269,6 +461,10 @@ pub trait TaskHandler: Send + Sync + 'static {
 pub struct OpenClawAgent {
     pub config: AgentConfig,
     pub llm: LlmClient,
+    /// Direct Groq client — `None` if `GROQ_API_KEY` is not set.
+    /// Agents call `agent.groq()` to get it, which panics if unavailable.
+    /// Use `agent.has_groq()` to check first.
+    pub groq_client: Option<GroqClient>,
     pub stats: SharedStats,
     http: reqwest::Client,
 }
@@ -276,6 +472,10 @@ pub struct OpenClawAgent {
 impl OpenClawAgent {
     pub fn new(config: AgentConfig) -> Self {
         let llm = LlmClient::new(&config.core_url, &config.api_key, &config.llm_tier);
+        let groq_client = GroqClient::from_env();
+        if groq_client.is_some() {
+            info!(agent_id = %config.agent_id, "Groq LLM available");
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -283,9 +483,22 @@ impl OpenClawAgent {
         Self {
             config,
             llm,
+            groq_client,
             stats: Arc::new(Mutex::new(AgentStats::default())),
             http,
         }
+    }
+
+    /// Get the Groq client. Panics if `GROQ_API_KEY` is not set.
+    pub fn groq(&self) -> &GroqClient {
+        self.groq_client
+            .as_ref()
+            .expect("Groq client not available — set GROQ_API_KEY env var")
+    }
+
+    /// Check if Groq is available.
+    pub fn has_groq(&self) -> bool {
+        self.groq_client.is_some()
     }
 
     /// Register this agent with the Core API.

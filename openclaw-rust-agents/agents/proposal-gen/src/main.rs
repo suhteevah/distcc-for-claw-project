@@ -11,7 +11,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use openclaw_sdk::{AgentConfig, ChatMessage, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -153,13 +153,16 @@ struct PortfolioResponse {
 #[derive(Clone)]
 struct AppState {
     agent: OpenClawAgent,
+    soul: Arc<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Task handler (Core API task polling)
 // ---------------------------------------------------------------------------
 
-struct ProposalTaskHandler;
+struct ProposalTaskHandler {
+    soul: Arc<String>,
+}
 
 #[async_trait::async_trait]
 impl TaskHandler for ProposalTaskHandler {
@@ -168,13 +171,13 @@ impl TaskHandler for ProposalTaskHandler {
             "upwork_proposal" => {
                 let req: ProposalRequest =
                     serde_json::from_value(task.payload.clone()).context("invalid proposal payload")?;
-                let result = generate_proposal(agent, req).await?;
+                let result = generate_proposal(agent, req, &self.soul).await?;
                 serde_json::to_value(result).context("serialize proposal result")
             }
             "consulting_sow" => {
                 let req: SowRequest =
                     serde_json::from_value(task.payload.clone()).context("invalid SOW payload")?;
-                let result = generate_sow(agent, req).await?;
+                let result = generate_sow(agent, req, &self.soul).await?;
                 serde_json::to_value(result).context("serialize SOW result")
             }
             "pricing" => {
@@ -192,7 +195,7 @@ impl TaskHandler for ProposalTaskHandler {
 // Core logic: proposal generation
 // ---------------------------------------------------------------------------
 
-async fn generate_proposal(agent: &OpenClawAgent, req: ProposalRequest) -> Result<ProposalResponse> {
+async fn generate_proposal(agent: &OpenClawAgent, req: ProposalRequest, soul: &str) -> Result<ProposalResponse> {
     let budget_info = req
         .budget_range
         .as_deref()
@@ -223,8 +226,8 @@ async fn generate_proposal(agent: &OpenClawAgent, req: ProposalRequest) -> Resul
     );
 
     let resp = agent
-        .llm
-        .complete(&prompt, Some("heavy"), Some(SYSTEM_PROMPT), Some(6144), Some(0.7), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(6144), Some(0.7))
         .await
         .context("LLM proposal generation failed")?;
 
@@ -262,7 +265,7 @@ fn split_variants(text: &str) -> (String, String) {
 // Core logic: SOW generation
 // ---------------------------------------------------------------------------
 
-async fn generate_sow(agent: &OpenClawAgent, req: SowRequest) -> Result<SowResponse> {
+async fn generate_sow(agent: &OpenClawAgent, req: SowRequest, soul: &str) -> Result<SowResponse> {
     let deliverables_list = req
         .deliverables
         .iter()
@@ -295,8 +298,8 @@ async fn generate_sow(agent: &OpenClawAgent, req: SowRequest) -> Result<SowRespo
     );
 
     let resp = agent
-        .llm
-        .complete(&prompt, Some("heavy"), Some(SYSTEM_PROMPT), Some(8192), Some(0.5), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(8192), Some(0.5))
         .await
         .context("LLM SOW generation failed")?;
 
@@ -426,7 +429,7 @@ async fn propose_handler(
     State(state): State<AppState>,
     Json(req): Json<ProposalRequest>,
 ) -> impl IntoResponse {
-    match generate_proposal(&state.agent, req).await {
+    match generate_proposal(&state.agent, req, &state.soul).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -440,7 +443,7 @@ async fn sow_handler(
     State(state): State<AppState>,
     Json(req): Json<SowRequest>,
 ) -> impl IntoResponse {
-    match generate_sow(&state.agent, req).await {
+    match generate_sow(&state.agent, req, &state.soul).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -490,10 +493,15 @@ async fn main() -> Result<()> {
     }
 
     let config = AgentConfig::from_env().context("failed to load agent config")?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
+
+    let soul = openclaw_sdk::load_soul(&config.agent_id)
+        .unwrap_or_else(|| SYSTEM_PROMPT.to_string());
+    let soul = Arc::new(soul);
 
     let app_state = AppState {
         agent: agent.clone(),
+        soul: soul.clone(),
     };
 
     let extra_routes = Router::new()
@@ -503,5 +511,5 @@ async fn main() -> Result<()> {
         .route("/portfolio", get(portfolio_handler))
         .with_state(app_state);
 
-    agent.run(ProposalTaskHandler, extra_routes).await
+    agent.run(ProposalTaskHandler { soul }, extra_routes).await
 }

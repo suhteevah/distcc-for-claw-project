@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::Uuid;
 
-use openclaw_sdk::{AgentConfig, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler};
 
 // ---------------------------------------------------------------------------
 // Approval queue types
@@ -100,6 +100,7 @@ struct UpworkResponse {
 
 async fn classify_lead(
     agent: &OpenClawAgent,
+    soul: &str,
     email_from: &str,
     subject: &str,
     body: &str,
@@ -126,11 +127,15 @@ Respond with ONLY valid JSON in this exact format:
 {{"category": "<one of the categories above>", "confidence": <0.0 to 1.0>, "reasoning": "<brief explanation>"}}"#
     );
 
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let llm_response = agent
-        .llm
-        .complete(&prompt, None, None, Some(512), Some(0.1), true)
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(512), Some(0.1), true)
         .await
-        .context("LLM classification request failed")?;
+        .context("Groq classification request failed")?;
 
     let parsed: serde_json::Value = serde_json::from_str(&llm_response.text)
         .context("Failed to parse LLM classification response as JSON")?;
@@ -150,6 +155,7 @@ Respond with ONLY valid JSON in this exact format:
 
 async fn draft_email_response(
     agent: &OpenClawAgent,
+    soul: &str,
     email_from: &str,
     subject: &str,
     body: &str,
@@ -185,16 +191,17 @@ Write ONLY the email body text, no JSON wrapping:"#
     );
 
     let llm_response = agent
-        .llm
-        .complete(&prompt, None, None, Some(1024), Some(0.7), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(1024), Some(0.7))
         .await
-        .context("LLM email draft request failed")?;
+        .context("Groq email draft request failed")?;
 
     Ok(llm_response.text.trim().to_string())
 }
 
 async fn draft_upwork_proposal(
     agent: &OpenClawAgent,
+    soul: &str,
     job_title: &str,
     job_description: &str,
     relevant_experience: &str,
@@ -235,10 +242,10 @@ Write ONLY the proposal text:"#
     );
 
     let llm_response = agent
-        .llm
-        .complete(&prompt, None, None, Some(1024), Some(0.7), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(1024), Some(0.7))
         .await
-        .context("LLM Upwork proposal request failed")?;
+        .context("Groq Upwork proposal request failed")?;
 
     Ok(llm_response.text.trim().to_string())
 }
@@ -282,6 +289,7 @@ fn queue_for_approval(
 #[derive(Clone)]
 struct AppState {
     agent: OpenClawAgent,
+    soul: String,
     queue: ApprovalQueue,
 }
 
@@ -293,7 +301,7 @@ async fn classify_handler(
     State(state): State<AppState>,
     Json(req): Json<ClassifyRequest>,
 ) -> impl IntoResponse {
-    match classify_lead(&state.agent, &req.email_from, &req.subject, &req.body).await {
+    match classify_lead(&state.agent, &state.soul, &req.email_from, &req.subject, &req.body).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -308,7 +316,7 @@ async fn draft_handler(
 ) -> impl IntoResponse {
     // Step 1: classify
     let classification =
-        match classify_lead(&state.agent, &req.email_from, &req.subject, &req.body).await {
+        match classify_lead(&state.agent, &state.soul, &req.email_from, &req.subject, &req.body).await {
             Ok(c) => c,
             Err(e) => {
                 return (
@@ -321,6 +329,7 @@ async fn draft_handler(
     // Step 2: draft response
     let draft = match draft_email_response(
         &state.agent,
+        &state.soul,
         &req.email_from,
         &req.subject,
         &req.body,
@@ -370,6 +379,7 @@ async fn upwork_handler(
 ) -> impl IntoResponse {
     let draft = match draft_upwork_proposal(
         &state.agent,
+        &state.soul,
         &req.job_title,
         &req.job_description,
         &req.relevant_experience,
@@ -549,6 +559,7 @@ async fn reject_handler(
 // ---------------------------------------------------------------------------
 
 struct LeadResponderHandler {
+    soul: String,
     queue: ApprovalQueue,
 }
 
@@ -567,7 +578,7 @@ impl TaskHandler for LeadResponderHandler {
                     .as_str()
                     .context("missing body in payload")?;
 
-                let result = classify_lead(agent, email_from, subject, body).await?;
+                let result = classify_lead(agent, &self.soul, email_from, subject, body).await?;
                 Ok(serde_json::to_value(result)?)
             }
 
@@ -585,11 +596,12 @@ impl TaskHandler for LeadResponderHandler {
 
                 // Classify first
                 let classification =
-                    classify_lead(agent, email_from, subject, body).await?;
+                    classify_lead(agent, &self.soul, email_from, subject, body).await?;
 
                 // Draft response
                 let draft = draft_email_response(
                     agent,
+                    &self.soul,
                     email_from,
                     subject,
                     body,
@@ -635,6 +647,7 @@ impl TaskHandler for LeadResponderHandler {
 
                 let draft = draft_upwork_proposal(
                     agent,
+                    &self.soul,
                     job_title,
                     job_description,
                     relevant_experience,
@@ -693,18 +706,22 @@ async fn main() -> Result<()> {
     }
 
     let config = AgentConfig::from_env()?;
-    let agent = OpenClawAgent::new(config);
+    let agent = OpenClawAgent::new(config.clone());
+    let soul = openclaw_sdk::load_soul(&config.agent_id)
+        .unwrap_or_else(|| "You are a lead classification and response expert.".to_string());
 
     // Shared approval queue
     let queue: ApprovalQueue = Arc::new(DashMap::new());
 
     let handler = LeadResponderHandler {
+        soul: soul.clone(),
         queue: Arc::clone(&queue),
     };
 
     // Build agent-specific routes with state
     let app_state = AppState {
         agent: agent.clone(),
+        soul,
         queue: Arc::clone(&queue),
     };
 

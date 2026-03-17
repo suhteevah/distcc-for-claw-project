@@ -10,7 +10,7 @@ use axum::{
     Router,
 };
 use chrono::Utc;
-use openclaw_sdk::{AgentConfig, OpenClawAgent, Task, TaskHandler};
+use openclaw_sdk::{AgentConfig, ChatMessage, GroqModel, OpenClawAgent, Task, TaskHandler};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -18,7 +18,12 @@ use tracing::{error, info};
 // Shared app state for direct API endpoints
 // ---------------------------------------------------------------------------
 
-type AppState = Arc<OpenClawAgent>;
+struct SharedState {
+    agent: OpenClawAgent,
+    soul: String,
+}
+
+type AppState = Arc<SharedState>;
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -158,7 +163,7 @@ fn default_content_type() -> SeoContentType {
 // Content generation logic
 // ---------------------------------------------------------------------------
 
-async fn generate_blog_post(agent: &OpenClawAgent, req: &BlogPostRequest) -> Result<ContentResponse> {
+async fn generate_blog_post(agent: &OpenClawAgent, soul: &str, req: &BlogPostRequest) -> Result<ContentResponse> {
     let keywords_str = if req.keywords.is_empty() {
         String::new()
     } else {
@@ -185,14 +190,9 @@ async fn generate_blog_post(agent: &OpenClawAgent, req: &BlogPostRequest) -> Res
         meta = meta_instruction,
     );
 
-    let system = "You are an expert SEO content writer for Ridge Cell Repair LLC. \
-                  You write engaging, well-structured blog posts that rank well in search engines \
-                  while providing genuine value to readers. Use proper heading hierarchy (H2, H3), \
-                  include natural keyword placement, and maintain a conversational yet authoritative voice.";
-
     let resp = agent
-        .llm
-        .complete(&prompt, Some("heavy"), Some(system), Some(8192), Some(0.6), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(8192), Some(0.6))
         .await
         .context("blog post LLM generation failed")?;
 
@@ -216,7 +216,7 @@ async fn generate_blog_post(agent: &OpenClawAgent, req: &BlogPostRequest) -> Res
     })
 }
 
-async fn generate_social_media(agent: &OpenClawAgent, req: &SocialMediaRequest) -> Result<ContentResponse> {
+async fn generate_social_media(agent: &OpenClawAgent, soul: &str, req: &SocialMediaRequest) -> Result<ContentResponse> {
     let platforms_str = if req.platforms.is_empty() {
         "Twitter, LinkedIn, Instagram".to_string()
     } else {
@@ -242,13 +242,13 @@ async fn generate_social_media(agent: &OpenClawAgent, req: &SocialMediaRequest) 
         cta = cta_str,
     );
 
-    let system = "You are a social media strategist who creates engaging, platform-optimized \
-                  content. You understand character limits, hashtag strategies, and engagement \
-                  patterns for each platform. Always return valid JSON.";
-
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let resp = agent
-        .llm
-        .complete(&prompt, Some("fast"), Some(system), Some(2048), Some(0.7), true)
+        .groq()
+        .chat(messages, Some(GroqModel::Fast), Some(2048), Some(0.7), true)
         .await
         .context("social media LLM generation failed")?;
 
@@ -269,7 +269,7 @@ async fn generate_social_media(agent: &OpenClawAgent, req: &SocialMediaRequest) 
     })
 }
 
-async fn generate_email_campaign(agent: &OpenClawAgent, req: &EmailCampaignRequest) -> Result<ContentResponse> {
+async fn generate_email_campaign(agent: &OpenClawAgent, soul: &str, req: &EmailCampaignRequest) -> Result<ContentResponse> {
     let product_str = match &req.product_service {
         Some(ps) => format!("\nProduct/Service: {}", ps),
         None => String::new(),
@@ -295,14 +295,13 @@ async fn generate_email_campaign(agent: &OpenClawAgent, req: &EmailCampaignReque
         product = product_str,
     );
 
-    let system = "You are an expert email marketing strategist for Ridge Cell Repair LLC. \
-                  You write high-converting email sequences with compelling subject lines, \
-                  strong preview text, and clear calls to action. You understand email deliverability \
-                  best practices and write copy that avoids spam triggers. Always return valid JSON.";
-
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: soul.to_string() },
+        ChatMessage { role: "user".into(), content: prompt },
+    ];
     let resp = agent
-        .llm
-        .complete(&prompt, Some("heavy"), Some(system), Some(8192), Some(0.6), true)
+        .groq()
+        .chat(messages, Some(GroqModel::Smart), Some(8192), Some(0.6), true)
         .await
         .context("email campaign LLM generation failed")?;
 
@@ -323,7 +322,7 @@ async fn generate_email_campaign(agent: &OpenClawAgent, req: &EmailCampaignReque
     })
 }
 
-async fn generate_seo_content(agent: &OpenClawAgent, req: &SeoContentRequest) -> Result<ContentResponse> {
+async fn generate_seo_content(agent: &OpenClawAgent, soul: &str, req: &SeoContentRequest) -> Result<ContentResponse> {
     let secondary_str = if req.secondary_keywords.is_empty() {
         String::new()
     } else {
@@ -349,14 +348,9 @@ async fn generate_seo_content(agent: &OpenClawAgent, req: &SeoContentRequest) ->
         secondary = secondary_str,
     );
 
-    let system = "You are an expert SEO content strategist for Ridge Cell Repair LLC. \
-                  You write content that ranks on the first page of Google by combining \
-                  technical SEO best practices with genuinely helpful, well-structured content. \
-                  You understand E-E-A-T signals, search intent, and modern SEO requirements.";
-
     let resp = agent
-        .llm
-        .complete(&prompt, Some("heavy"), Some(system), Some(6144), Some(0.5), false)
+        .groq()
+        .complete(&prompt, Some(GroqModel::Smart), Some(soul), Some(6144), Some(0.5))
         .await
         .context("SEO content LLM generation failed")?;
 
@@ -406,7 +400,9 @@ fn parse_meta_separator(text: &str) -> (String, Option<serde_json::Value>) {
 // Task handler (for poll-based task processing)
 // ---------------------------------------------------------------------------
 
-struct ContentMillHandler;
+struct ContentMillHandler {
+    soul: String,
+}
 
 #[async_trait]
 impl TaskHandler for ContentMillHandler {
@@ -415,25 +411,25 @@ impl TaskHandler for ContentMillHandler {
             "blog_post" => {
                 let req: BlogPostRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid blog_post payload")?;
-                let result = generate_blog_post(agent, &req).await?;
+                let result = generate_blog_post(agent, &self.soul, &req).await?;
                 serde_json::to_value(result).context("failed to serialize blog_post result")
             }
             "social_media" => {
                 let req: SocialMediaRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid social_media payload")?;
-                let result = generate_social_media(agent, &req).await?;
+                let result = generate_social_media(agent, &self.soul, &req).await?;
                 serde_json::to_value(result).context("failed to serialize social_media result")
             }
             "email_campaign" => {
                 let req: EmailCampaignRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid email_campaign payload")?;
-                let result = generate_email_campaign(agent, &req).await?;
+                let result = generate_email_campaign(agent, &self.soul, &req).await?;
                 serde_json::to_value(result).context("failed to serialize email_campaign result")
             }
             "seo_content" => {
                 let req: SeoContentRequest = serde_json::from_value(task.payload.clone())
                     .context("invalid seo_content payload")?;
-                let result = generate_seo_content(agent, &req).await?;
+                let result = generate_seo_content(agent, &self.soul, &req).await?;
                 serde_json::to_value(result).context("failed to serialize seo_content result")
             }
             other => {
@@ -448,11 +444,11 @@ impl TaskHandler for ContentMillHandler {
 // ---------------------------------------------------------------------------
 
 async fn blog_handler(
-    State(agent): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<BlogPostRequest>,
 ) -> impl IntoResponse {
     info!(topic = %req.topic, "POST /blog");
-    match generate_blog_post(&agent, &req).await {
+    match generate_blog_post(&state.agent, &state.soul, &req).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => {
             error!(error = %e, "blog generation failed");
@@ -466,11 +462,11 @@ async fn blog_handler(
 }
 
 async fn social_handler(
-    State(agent): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<SocialMediaRequest>,
 ) -> impl IntoResponse {
     info!(topic = %req.topic, "POST /social");
-    match generate_social_media(&agent, &req).await {
+    match generate_social_media(&state.agent, &state.soul, &req).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => {
             error!(error = %e, "social media generation failed");
@@ -484,11 +480,11 @@ async fn social_handler(
 }
 
 async fn email_campaign_handler(
-    State(agent): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<EmailCampaignRequest>,
 ) -> impl IntoResponse {
     info!(context = %req.subject_context, campaign_type = %req.campaign_type, "POST /email-campaign");
-    match generate_email_campaign(&agent, &req).await {
+    match generate_email_campaign(&state.agent, &state.soul, &req).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => {
             error!(error = %e, "email campaign generation failed");
@@ -502,11 +498,11 @@ async fn email_campaign_handler(
 }
 
 async fn seo_content_handler(
-    State(agent): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<SeoContentRequest>,
 ) -> impl IntoResponse {
     info!(keyword = %req.primary_keyword, url = %req.url, "POST /seo-content");
-    match generate_seo_content(&agent, &req).await {
+    match generate_seo_content(&state.agent, &state.soul, &req).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())).into_response(),
         Err(e) => {
             error!(error = %e, "SEO content generation failed");
@@ -537,15 +533,22 @@ async fn main() -> Result<()> {
     }
 
     let config = AgentConfig::from_env().context("failed to load agent config")?;
+    let soul = openclaw_sdk::load_soul(&config.agent_id)
+        .unwrap_or_else(|| "You are an expert content writer for Ridge Cell Repair LLC.".to_string());
+    info!(agent_id = %config.agent_id, soul_len = soul.len(), "loaded soul");
+
     let agent = OpenClawAgent::new(config);
-    let agent_state: AppState = Arc::new(agent.clone());
+    let app_state: AppState = Arc::new(SharedState {
+        agent: agent.clone(),
+        soul: soul.clone(),
+    });
 
     let extra_routes = Router::new()
         .route("/blog", post(blog_handler))
         .route("/social", post(social_handler))
         .route("/email-campaign", post(email_campaign_handler))
         .route("/seo-content", post(seo_content_handler))
-        .with_state(agent_state);
+        .with_state(app_state);
 
-    agent.run(ContentMillHandler, extra_routes).await
+    agent.run(ContentMillHandler { soul }, extra_routes).await
 }
