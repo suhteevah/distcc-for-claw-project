@@ -1,0 +1,18 @@
+[Unit]
+Description=The Right Wire - Cron Scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/wire-cron/wire-cron.sh
+Restart=always
+RestartSec=10
+EnvironmentFile=/etc/wire-cron/env
+User=claude-agent
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wire-cron
+
+[Install]
+WantedBy=multi-user.target

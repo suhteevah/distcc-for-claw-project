@@ -1,0 +1,2 @@
+# Not used — the wire-cron.sh script has its own internal scheduler loop.
+# This file exists only as documentation that wire-cron.service is self-scheduling.
