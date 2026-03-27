@@ -41,6 +41,7 @@ The recommended driver is the **lwfinger/rtw88** mac80211 backport from [lwfinge
 | [06-boot-persistence.md](06-boot-persistence.md) | SELinux, systemd services, and standalone boot scripts |
 | [07-wifi-configuration.md](07-wifi-configuration.md) | Configuring WiFi with wpa_supplicant and dhcpcd |
 | [08-troubleshooting.md](08-troubleshooting.md) | Common issues and solutions |
+| [09-monitor-mode-patches.md](09-monitor-mode-patches.md) | Adding monitor mode & packet injection for aircrack-ng |
 | [appendix-a-morrownr-driver.md](appendix-a-morrownr-driver.md) | Archived: morrownr/8821au approach (kernel crashes on 6.12) |
 
 ## Hardware

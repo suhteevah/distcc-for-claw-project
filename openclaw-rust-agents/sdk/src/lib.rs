@@ -723,6 +723,13 @@ async fn heartbeat_loop(agent: OpenClawAgent) {
             Ok(resp) if resp.status().is_success() => {
                 tracing::trace!("heartbeat sent");
             }
+            Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
+                warn!("heartbeat 404 — agent not registered, re-registering");
+                match agent.register().await {
+                    Ok(()) => info!("re-registered with Core after heartbeat 404"),
+                    Err(e) => warn!(error = %e, "re-registration failed"),
+                }
+            }
             Ok(resp) => {
                 warn!(status = %resp.status(), "heartbeat non-success");
             }
