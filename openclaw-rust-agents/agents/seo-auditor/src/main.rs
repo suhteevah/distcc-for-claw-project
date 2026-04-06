@@ -37,7 +37,9 @@ struct PageData {
     images_missing_alt: usize,
     internal_links: usize,
     external_links: usize,
+    dead_hash_links: usize,
     has_canonical: bool,
+    canonical_count: usize,
     canonical_url: Option<String>,
     robots_meta: Option<String>,
     has_og_tags: bool,
@@ -45,6 +47,15 @@ struct PageData {
     word_count: usize,
     html_size_kb: f64,
     load_time_ms: u64,
+    external_scripts: usize,
+    unsafe_target_blank_links: usize,
+    // Security headers (populated from HTTP response)
+    has_csp: bool,
+    has_x_frame_options: bool,
+    has_x_content_type_options: bool,
+    has_referrer_policy: bool,
+    has_permissions_policy: bool,
+    has_hsts: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +99,15 @@ async fn fetch_page(url: &str) -> Result<PageData> {
     let load_time_ms = start.elapsed().as_millis() as u64;
 
     let status_code = response.status().as_u16();
+
+    // Capture security headers before consuming the response
+    let headers = response.headers();
+    let has_csp = headers.contains_key("content-security-policy");
+    let has_x_frame_options = headers.contains_key("x-frame-options");
+    let has_x_content_type_options = headers.contains_key("x-content-type-options");
+    let has_referrer_policy = headers.contains_key("referrer-policy");
+    let has_permissions_policy = headers.contains_key("permissions-policy");
+    let has_hsts = headers.contains_key("strict-transport-security");
 
     // Collect redirect chain from the response URL vs original
     let final_url = response.url().to_string();
@@ -156,11 +176,29 @@ async fn fetch_page(url: &str) -> Result<PageData> {
     let a_sel = Selector::parse("a[href]").unwrap();
     let mut internal_links = 0usize;
     let mut external_links = 0usize;
+    let mut dead_hash_links = 0usize;
+    let mut unsafe_target_blank_links = 0usize;
     for el in document.select(&a_sel) {
         if let Some(href) = el.value().attr("href") {
             let href = href.trim();
-            if href.starts_with('#') || href.is_empty() {
+            // Count dead anchor links (href="#" with visible text = likely broken CTA)
+            if href == "#" {
+                let text: String = el.text().collect::<String>();
+                if !text.trim().is_empty() {
+                    dead_hash_links += 1;
+                }
                 continue;
+            }
+            if href.is_empty() {
+                continue;
+            }
+            // Check for unsafe target="_blank" without rel="noopener"
+            let target = el.value().attr("target").unwrap_or("");
+            if target == "_blank" {
+                let rel = el.value().attr("rel").unwrap_or("");
+                if !rel.contains("noopener") {
+                    unsafe_target_blank_links += 1;
+                }
             }
             if href.starts_with('/') || href.starts_with("./") || href.starts_with("../") {
                 internal_links += 1;
@@ -177,11 +215,18 @@ async fn fetch_page(url: &str) -> Result<PageData> {
         }
     }
 
-    // Canonical
+    // Canonical (check for duplicates)
     let canonical_sel = Selector::parse(r#"link[rel="canonical"]"#).unwrap();
-    let canonical_el = document.select(&canonical_sel).next();
-    let has_canonical = canonical_el.is_some();
-    let canonical_url = canonical_el.and_then(|el| el.value().attr("href").map(|s| s.to_string()));
+    let canonical_els: Vec<_> = document.select(&canonical_sel).collect();
+    let canonical_count = canonical_els.len();
+    let has_canonical = canonical_count > 0;
+    let canonical_url = canonical_els
+        .first()
+        .and_then(|el| el.value().attr("href").map(|s| s.to_string()));
+
+    // External scripts
+    let script_sel = Selector::parse("script[src]").unwrap();
+    let external_scripts = document.select(&script_sel).count();
 
     // Robots meta
     let robots_sel = Selector::parse(r#"meta[name="robots"]"#).unwrap();
@@ -228,7 +273,9 @@ async fn fetch_page(url: &str) -> Result<PageData> {
         images_missing_alt,
         internal_links,
         external_links,
+        dead_hash_links,
         has_canonical,
+        canonical_count,
         canonical_url,
         robots_meta,
         has_og_tags,
@@ -236,6 +283,14 @@ async fn fetch_page(url: &str) -> Result<PageData> {
         word_count,
         html_size_kb,
         load_time_ms,
+        external_scripts,
+        unsafe_target_blank_links,
+        has_csp,
+        has_x_frame_options,
+        has_x_content_type_options,
+        has_referrer_policy,
+        has_permissions_policy,
+        has_hsts,
     })
 }
 
@@ -396,6 +451,120 @@ fn score_page(page: &PageData) -> (i32, Vec<SeoIssue>) {
         });
     }
 
+    // Dead hash links (CTAs pointing to "#")
+    if page.dead_hash_links > 0 {
+        let deduction = std::cmp::min(10, (page.dead_hash_links * 3) as i32);
+        score -= deduction;
+        issues.push(SeoIssue {
+            severity: "critical".into(),
+            category: "links".into(),
+            issue: format!(
+                "{} links point to \"#\" (dead anchor links, likely broken CTAs)",
+                page.dead_hash_links
+            ),
+            fix: "Wire all CTA links to real destinations; dead links hurt UX and crawl budget"
+                .into(),
+        });
+    }
+
+    // Duplicate canonical tags
+    if page.canonical_count > 1 {
+        score -= 5;
+        issues.push(SeoIssue {
+            severity: "warning".into(),
+            category: "canonical".into(),
+            issue: format!(
+                "Page has {} canonical tags (should be exactly 1)",
+                page.canonical_count
+            ),
+            fix: "Remove duplicate <link rel=\"canonical\"> tags; multiple canonicals confuse crawlers"
+                .into(),
+        });
+    }
+
+    // Excessive external scripts
+    if page.external_scripts > 15 {
+        score -= 5;
+        issues.push(SeoIssue {
+            severity: "warning".into(),
+            category: "performance".into(),
+            issue: format!(
+                "Page loads {} external scripts (excessive, slows rendering)",
+                page.external_scripts
+            ),
+            fix: "Audit and remove unused third-party scripts; defer non-critical JS"
+                .into(),
+        });
+    }
+
+    // Unsafe target="_blank" links (tabnapping risk)
+    if page.unsafe_target_blank_links > 0 {
+        score -= 3;
+        issues.push(SeoIssue {
+            severity: "warning".into(),
+            category: "security".into(),
+            issue: format!(
+                "{} external links open in new tab without rel=\"noopener\" (tabnapping risk)",
+                page.unsafe_target_blank_links
+            ),
+            fix: "Add rel=\"noopener noreferrer\" to all target=\"_blank\" links".into(),
+        });
+    }
+
+    // --- Security header checks ---
+
+    if !page.has_csp {
+        score -= 5;
+        issues.push(SeoIssue {
+            severity: "critical".into(),
+            category: "security".into(),
+            issue: "Missing Content-Security-Policy header".into(),
+            fix: "Add a CSP header to prevent XSS attacks (at minimum restrict script-src)"
+                .into(),
+        });
+    }
+
+    if !page.has_x_frame_options {
+        score -= 3;
+        issues.push(SeoIssue {
+            severity: "warning".into(),
+            category: "security".into(),
+            issue: "Missing X-Frame-Options header (clickjacking risk)".into(),
+            fix: "Add X-Frame-Options: DENY or use CSP frame-ancestors directive".into(),
+        });
+    }
+
+    if !page.has_x_content_type_options {
+        score -= 2;
+        issues.push(SeoIssue {
+            severity: "warning".into(),
+            category: "security".into(),
+            issue: "Missing X-Content-Type-Options header".into(),
+            fix: "Add X-Content-Type-Options: nosniff to prevent MIME-type sniffing".into(),
+        });
+    }
+
+    if !page.has_referrer_policy {
+        score -= 2;
+        issues.push(SeoIssue {
+            severity: "info".into(),
+            category: "security".into(),
+            issue: "Missing Referrer-Policy header (leaks full URLs to third parties)".into(),
+            fix: "Add Referrer-Policy: strict-origin-when-cross-origin".into(),
+        });
+    }
+
+    if !page.has_permissions_policy {
+        score -= 2;
+        issues.push(SeoIssue {
+            severity: "info".into(),
+            category: "security".into(),
+            issue: "Missing Permissions-Policy header".into(),
+            fix: "Add Permissions-Policy to restrict camera, microphone, geolocation access from iframes"
+                .into(),
+        });
+    }
+
     // Load time
     if page.load_time_ms > 3000 {
         score -= 10;
@@ -456,9 +625,13 @@ External Links: {}
 Word Count: {}
 HTML Size: {:.1} KB
 Load Time: {}ms
-Has Canonical: {}
+Has Canonical: {} (count: {})
 Has OG Tags: {}
 Has Schema: {}
+Dead Hash Links: {}
+External Scripts: {}
+Unsafe target=_blank Links: {}
+Security Headers — CSP: {}, X-Frame-Options: {}, X-Content-Type-Options: {}, Referrer-Policy: {}, Permissions-Policy: {}, HSTS: {}
 
 Issues Found:
 {}
@@ -485,8 +658,18 @@ Write concisely and professionally. Do not use bullet points or headers — just
         page.html_size_kb,
         page.load_time_ms,
         page.has_canonical,
+        page.canonical_count,
         page.has_og_tags,
         page.has_schema,
+        page.dead_hash_links,
+        page.external_scripts,
+        page.unsafe_target_blank_links,
+        page.has_csp,
+        page.has_x_frame_options,
+        page.has_x_content_type_options,
+        page.has_referrer_policy,
+        page.has_permissions_policy,
+        page.has_hsts,
         issues_summary.join("\n"),
     );
 
