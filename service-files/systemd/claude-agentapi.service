@@ -7,7 +7,11 @@ Wants=network-online.target
 Type=simple
 User=claude-agent
 WorkingDirectory=/home/claude-agent
-EnvironmentFile=/etc/claude/api-key
+# HOME must be set so the claude CLI finds ~/.claude/.credentials.json (OAuth)
+Environment="HOME=/home/claude-agent"
+# `-` prefix = optional file; supports both API-key auth and OAuth (empty file)
+EnvironmentFile=-/etc/claude/api-key
+EnvironmentFile=-/etc/claude/model-env
 ExecStart=/usr/local/bin/agentapi server --type claude -- claude \
   --dangerously-skip-permissions \
   --max-budget-usd 10.00

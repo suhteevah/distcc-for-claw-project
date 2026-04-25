@@ -63,6 +63,11 @@ done
 TS_AUTH_KEY="${TS_AUTH_KEY:-}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN:-}"
+# OAuth (Claude Max) credentials — path to a .credentials.json from a workstation
+# where `claude` was already logged in. Takes precedence over ANTHROPIC_API_KEY when set.
+CLAUDE_CREDENTIALS_FILE="${CLAUDE_CREDENTIALS_FILE:-}"
+# Default model for the Claude Code CLI. claude-opus-4-7 = current Opus.
+ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-7}"
 if [ -z "$TS_AUTH_KEY" ]; then
     echo "FATAL: No TS_AUTH_KEY found. Create .secrets file from .secrets.example"
     echo "  cp .secrets.example .secrets && \$EDITOR .secrets"
@@ -472,19 +477,43 @@ if [ "$CURRENT_PHASE" -le 5 ]; then
         ok "User 'claude-agent' created"
     fi
 
-    # API key file — from env var or empty placeholder
+    # Auth: OAuth (.credentials.json) takes precedence; fallback to API key; else Ollama-only.
     mkdir -p /etc/claude
     chmod 700 /etc/claude
-    if [ -n "${ANTHROPIC_API_KEY}" ]; then
+
+    CLAUDE_AGENT_HOME="/home/claude-agent"
+    install -d -o claude-agent -g claude-agent -m 700 "${CLAUDE_AGENT_HOME}/.claude"
+
+    if [ -n "${CLAUDE_CREDENTIALS_FILE}" ] && [ -f "${CLAUDE_CREDENTIALS_FILE}" ]; then
+        # OAuth — Claude Max / claude.ai login flow
+        install -o claude-agent -g claude-agent -m 600 \
+            "${CLAUDE_CREDENTIALS_FILE}" \
+            "${CLAUDE_AGENT_HOME}/.claude/.credentials.json"
+        # Keep api-key file empty so EnvironmentFile= load is a no-op
+        : > /etc/claude/api-key
+        chmod 600 /etc/claude/api-key
+        chown claude-agent:claude-agent /etc/claude/api-key
+        ok "OAuth credentials installed (Claude Max)"
+    elif [ -n "${ANTHROPIC_API_KEY}" ]; then
         echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" > /etc/claude/api-key
+        chmod 600 /etc/claude/api-key
+        chown claude-agent:claude-agent /etc/claude/api-key
         ok "API key saved"
     else
-        touch /etc/claude/api-key
-        info "No API key — Ollama handles inference. Add later if needed:"
+        : > /etc/claude/api-key
+        chmod 600 /etc/claude/api-key
+        chown claude-agent:claude-agent /etc/claude/api-key
+        info "No Anthropic auth — Ollama handles inference. Add later via either:"
         info "  echo 'ANTHROPIC_API_KEY=sk-ant-...' > /etc/claude/api-key"
+        info "  install -m600 -o claude-agent -g claude-agent <local>/.credentials.json /home/claude-agent/.claude/.credentials.json"
     fi
-    chmod 600 /etc/claude/api-key
-    chown claude-agent:claude-agent /etc/claude/api-key
+
+    # Default model — picked up by claude CLI via env
+    cat > /etc/claude/model-env <<EOF
+ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
+EOF
+    chmod 644 /etc/claude/model-env
+    ok "Default model: ${ANTHROPIC_MODEL}"
 
     save_state 6
 fi

@@ -7,7 +7,11 @@ Wants=network-online.target
 Type=simple
 User=claude-agent
 WorkingDirectory=/opt/claude-code-by-agents/backend
-EnvironmentFile=/etc/claude/api-key
+# HOME must be set so the claude CLI finds ~/.claude/.credentials.json (OAuth)
+Environment="HOME=/home/claude-agent"
+# `-` prefix = optional file; supports both API-key auth and OAuth (empty file)
+EnvironmentFile=-/etc/claude/api-key
+EnvironmentFile=-/etc/claude/model-env
 Environment="DENO_DIR=/home/claude-agent/.deno"
 Environment="PATH=/home/claude-agent/.deno/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/home/claude-agent/.deno/bin/deno task dev
