@@ -9,6 +9,8 @@ User=claude-agent
 WorkingDirectory=/opt/claude-code-by-agents/backend
 # HOME must be set so the claude CLI finds ~/.claude/.credentials.json (OAuth)
 Environment="HOME=/home/claude-agent"
+# CI=true suppresses interactive consent prompts (theme picker, bypass-permissions warning, etc.)
+Environment="CI=true"
 # `-` prefix = optional file; supports both API-key auth and OAuth (empty file)
 EnvironmentFile=-/etc/claude/api-key
 EnvironmentFile=-/etc/claude/model-env
