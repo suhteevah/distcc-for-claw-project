@@ -1,0 +1,11 @@
+# Deploy scripts run under busybox sh on OpenWrt nodes — must stay LF.
+# (repo has core.autocrlf=true; without this, checkout rewrites them CRLF and busybox chokes)
+*.sh        text eol=lf
+*.init      text eol=lf
+*.tmpl      text eol=lf
+*.list      text eol=lf
+*.tsv       text eol=lf
+
+# Prebuilt static binaries (ARM ELF) — never touch.
+deployments/mesh-nodes/nats/assets/* binary
+firmware/**                          binary

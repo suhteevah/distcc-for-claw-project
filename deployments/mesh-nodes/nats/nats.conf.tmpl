@@ -1,0 +1,24 @@
+# nats-server config — rendered per-node by nats-deploy.sh (placeholders __…__).
+# Cluster: clawmesh-nats (mesh-ap-06/07/08), JetStream file store on the expanded /overlay.
+server_name: __NODE__
+pid_file: "/var/run/nats-server.pid"
+
+# client connections (LAN/mesh only; firewall is off fleet-wide per P1)
+listen: 0.0.0.0:4222
+# monitoring/health (routez, jsz, varz, healthz)
+http: 0.0.0.0:8222
+
+authorization { token: "__TOKEN__" }
+
+jetstream {
+  store_dir: "/overlay/nats-js"
+  max_memory_store: 64MB
+  max_file_store: 512MB
+}
+
+cluster {
+  name: clawmesh-nats
+  listen: 0.0.0.0:6222
+  authorization { token: "__CLUSTER_TOKEN__" }
+  routes = [ __ROUTES__ ]
+}
