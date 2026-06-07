@@ -7,5 +7,6 @@
 *.tsv       text eol=lf
 
 # Prebuilt static binaries (ARM ELF) — never touch.
-deployments/mesh-nodes/nats/assets/* binary
-firmware/**                          binary
+deployments/mesh-nodes/nats/assets/*                  binary
+deployments/mesh-nodes/fleet-control/deploy/assets/*  binary
+firmware/**                                            binary
