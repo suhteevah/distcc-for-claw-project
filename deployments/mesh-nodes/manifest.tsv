@@ -1,0 +1,9 @@
+# node	role	tailnet_ip	notes
+mesh-ap-01	relay	100.113.97.29	wireless relay
+mesh-ap-02	relay	100.98.84.93	wireless relay
+mesh-ap-03	office	100.102.160.123	wired office AP, 5GHz-only ch36
+mesh-ap-04	relay	100.118.78.101	wireless relay
+mesh-ap-06	anchor	100.101.151.53	wired anchor, rsyncd
+mesh-ap-07	relay	100.98.215.14	NEW - needs full baseline
+mesh-ap-08	relay	100.69.15.8	NEW - needs full baseline
+mesh-ap-05	spare	100.65.180.124	OUT OF SCOPE - locked-down, reflash later

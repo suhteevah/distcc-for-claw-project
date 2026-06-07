@@ -1,0 +1,14 @@
+# Layer-0 baseline for AC-1304 mesh nodes (OpenWrt 25.12.3, apk).
+# Used by deploy.sh (apk add) AND image/build-image.sh (ImageBuilder).
+# Role-conditional packages (watchcat, block-mount/rsyncd) are added by roles/*.sh, NOT here.
+tailscale
+kmod-tun
+prometheus-node-exporter-lua
+collectd
+collectd-mod-cpu
+collectd-mod-memory
+collectd-mod-iwinfo
+collectd-mod-interface
+banip
+dawn
+umdns
