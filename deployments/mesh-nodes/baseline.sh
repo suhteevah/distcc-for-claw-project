@@ -20,6 +20,11 @@ us system.@system[0].log_ip   "$CNC_LOG_IP"
 us system.@system[0].log_port "514"
 us system.@system[0].log_proto "udp"
 
+# node-exporter must listen on the LAN, not loopback (else the cnc prometheus can't scrape it;
+# the prometheus container reaches nodes via LAN IP, not tailnet).
+ne_if="$(uci -q get prometheus-node-exporter-lua.main.listen_interface || true)"
+us prometheus-node-exporter-lua.main.listen_interface lan
+
 # Layer-0 services
 enable_svc dawn
 enable_svc collectd
@@ -30,5 +35,7 @@ enable_svc umdns
 uci commit
 # restart logd so log_ip takes effect (cheap, non-wifi)
 /etc/init.d/log restart 2>/dev/null || true
+# restart node-exporter only if its listen interface changed (apply the LAN bind)
+[ "$ne_if" = lan ] || /etc/init.d/prometheus-node-exporter-lua restart 2>/dev/null || true
 log "baseline complete (changed=$changed)"
 echo "BASELINE-OK"
