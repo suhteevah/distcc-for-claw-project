@@ -1,0 +1,2 @@
+# These scripts run on OpenWrt/busybox — must stay LF (CR breaks #!/bin/sh).
+* text=auto eol=lf
