@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenClaw fleet-controller (mesh control plane)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Token lives in /etc/fleet-controller.env (mode 600), NOT this unit.
+EnvironmentFile=/etc/fleet-controller.env
+# /usr/local/bin must be explicit — sudo/systemd secure_path strips it (see feedback_cnc_sudo_path_strips_usr_local).
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=RUST_LOG=info
+ExecStart=/usr/local/bin/fleet-controller
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
