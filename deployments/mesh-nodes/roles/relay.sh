@@ -1,5 +1,6 @@
 #!/bin/sh
-# roles/relay.sh — wireless relay overlay. Runs ON node. Idempotent. Touches wireless (dead-man armed by caller).
+# roles/relay.sh — wireless relay overlay. Runs ON node. Idempotent. Wireless changes (dead-man armed by caller).
+# watchcat files are PUSHED by deploy.sh (apk fetch for watchcat is unreliable on this fleet); we only enable here.
 set -e
 : "${FLEET_PSK:?FLEET_PSK not set}"
 changed=0; log(){ echo "[relay] $*"; }
@@ -36,11 +37,19 @@ us wireless.mesh1.rts 256
 us wireless.mesh1.frag 1024
 # br-lan dhcp client
 us network.lan.proto dhcp
-uci -q delete network.lan.ipaddr || true
-uci -q delete network.lan.netmask || true
-# watchcat on (relay safety net)
-/etc/init.d/watchcat enabled 2>/dev/null || { apk add watchcat 2>/dev/null || true; /etc/init.d/watchcat enable; changed=1; log "watchcat on"; }
+uci -q delete network.lan.ipaddr 2>/dev/null || true
+uci -q delete network.lan.netmask 2>/dev/null || true
 
+# commit wireless FIRST — never gated by later (watchcat) steps
 uci commit
-[ "$changed" = 1 ] && { wifi reload; /etc/init.d/network reload; }
+[ "$changed" = 1 ] && { wifi reload; /etc/init.d/network reload; log "wifi+net reloaded"; }
+
+# watchcat (safety net) — files pushed by deploy.sh; enable non-fatally
+if [ -x /etc/init.d/watchcat ]; then
+  if ! ls /etc/rc.d/S??watchcat >/dev/null 2>&1; then
+    /etc/init.d/watchcat enable 2>/dev/null && log "watchcat enabled" || log "watchcat enable failed (non-fatal)"
+  fi
+else
+  log "WARN: watchcat not present (deploy.sh asset push missing) — skipping"
+fi
 log "relay overlay done (changed=$changed)"; echo "ROLE-OK"

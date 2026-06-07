@@ -3,7 +3,7 @@
 MESH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$MESH_DIR/manifest.tsv"
 SSH_OPTS="-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8"
-SSH_NOISE='post-quantum\|store now\|openssh.com/pq\|may need to be upgraded\|This session may be vulnerable'
+SSH_NOISE='post-quantum\|store now\|openssh.com/pq\|may need to be upgraded\|This session may be vulnerable\|Permanently added\|^Warning: '
 
 # manifest lookups (skip comment lines)
 node_field() { awk -v n="$1" -v c="$2" '$1!~/^#/ && $1==n{print $c}' "$MANIFEST"; }

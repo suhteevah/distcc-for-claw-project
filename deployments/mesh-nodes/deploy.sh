@@ -25,6 +25,13 @@ node_ssh "$node" '
 # 3) push + run baseline then role overlay
 push_file "$node" baseline.sh /tmp/baseline.sh
 push_file "$node" "roles/$role.sh" /tmp/role.sh
+# relay nodes need watchcat staged from repo assets (apk fetch for watchcat is unreliable here)
+if [ "$role" = relay ]; then
+  push_file "$node" assets/watchcat/watchcat.init   /etc/init.d/watchcat
+  push_file "$node" assets/watchcat/watchcat.sh     /usr/bin/watchcat.sh
+  push_file "$node" assets/watchcat/watchcat.config /etc/config/watchcat
+  node_ssh "$node" 'chmod +x /etc/init.d/watchcat /usr/bin/watchcat.sh; echo watchcat-staged'
+fi
 echo "--- run baseline + $role ---"
 node_ssh "$node" "CNC_LOG_IP='$CNC_LOG_IP' sh /tmp/baseline.sh && FLEET_PSK='$FLEET_PSK' sh /tmp/role.sh"
 
