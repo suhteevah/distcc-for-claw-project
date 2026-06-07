@@ -34,9 +34,9 @@ bash deploy.sh <node>                       # apk install + baseline + role over
 - **Metrics:** `prometheus-node-exporter-lua` on each node, **bound to the LAN** (`listen_interface=lan`,
   NOT loopback) → scraped by `openclaw-prometheus` (job `mesh-fleet`) via the nodes' **LAN IPs**.
   - ⚠️ The prometheus container reaches nodes via **LAN, not tailnet** (it can't route to tailscale0).
-    Targets in `/opt/openclaw/openclaw-agents/monitoring/prometheus/prometheus.yml` use `192.168.168.x:9100`.
-  - ⚠️ Those LAN IPs are current **DHCP leases** — set SonicWall DHCP reservations for the node MACs to
-    harden against drift, then the prometheus targets never need touching.
+    Targets in `/opt/openclaw/openclaw-agents/monitoring/prometheus/prometheus.yml` use the LAN IPs below.
+  - ✅ **Stable: SonicWall DHCP reservations (MAC-pinned, outside the dynamic pool) — won't drift:**
+    `01=.140 02=.141 03=.142 04=.143 06=.144 07=.145 08=.146` (set 2026-06-07 via the SonicOS API).
 
 ## Future node bring-up
 1. Flash the baked image (`firmware/openwrt-25.12.3-google_wifi/`) per the flash-procedure wiki doc:
