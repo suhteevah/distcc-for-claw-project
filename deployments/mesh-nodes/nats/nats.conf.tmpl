@@ -19,6 +19,7 @@ jetstream {
 cluster {
   name: clawmesh-nats
   listen: 0.0.0.0:6222
-  authorization { token: "__CLUSTER_TOKEN__" }
+  # v2.14+ cluster auth uses user/password (token is rejected here)
+  authorization { user: "route", password: "__CLUSTER_TOKEN__" }
   routes = [ __ROUTES__ ]
 }

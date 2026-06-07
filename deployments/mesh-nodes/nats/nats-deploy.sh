@@ -22,7 +22,7 @@ for node in $MEMBERS; do
   routes=""
   for peer in $MEMBERS; do
     [ "$peer" = "$node" ] && continue
-    routes="${routes}nats-route://${NATS_CLUSTER_TOKEN}@${LAN[$peer]}:6222, "
+    routes="${routes}nats-route://route:${NATS_CLUSTER_TOKEN}@${LAN[$peer]}:6222, "
   done
   routes="${routes%, }"
 
@@ -37,8 +37,9 @@ for node in $MEMBERS; do
   node_ssh "$node" 'chmod +x /usr/sbin/nats-server; mkdir -p /etc/nats /overlay/nats-js'
   printf '%s\n' "$conf" | node_ssh "$node" 'cat > /etc/nats/nats.conf; chmod 600 /etc/nats/nats.conf'
   push_file "$node" nats/nats.init /etc/init.d/nats
-  node_ssh "$node" '/etc/init.d/nats enable; /etc/init.d/nats restart; sleep 2;
-    if pgrep -x nats-server >/dev/null; then echo "  '"$node"': nats up (pid $(pgrep -x nats-server))"; else echo "  '"$node"': NATS DOWN"; logread | grep -i nats | tail -5; fi'
+  node_ssh "$node" 'chmod +x /etc/init.d/nats; /etc/init.d/nats enable; /etc/init.d/nats restart; sleep 2;
+    pid=$(pidof nats-server);
+    if [ -n "$pid" ]; then echo "  '"$node"': nats up (pid $pid)"; else echo "  '"$node"': NATS DOWN"; logread | grep -i nats | tail -5; fi'
   [ $? -eq 0 ] || rc=1
 done
 echo "=== deploy done (rc=$rc) ==="
