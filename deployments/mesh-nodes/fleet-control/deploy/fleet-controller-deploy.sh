@@ -19,6 +19,9 @@ FLEET_METRICS_PORT=9094
 FLEET_DOWN_AFTER_SECS=90
 # node down/up alerts -> Telegram via the existing cnc helper (msg passed as argv arg)
 FLEET_NOTIFY_CMD=/opt/nightdrive/tools/notify-telegram.sh
+# scheduled probes: ping each up node's path to the gateway every 60s
+FLEET_PROBE_INTERVAL_SECS=60
+FLEET_PROBE_TARGET=192.168.168.168
 EOF
 chmod 600 /etc/fleet-controller.env
 

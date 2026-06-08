@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use fleet_proto::{Command, Heartbeat, ProbeRequest};
+use fleet_proto::{Command, Heartbeat, ProbeKind, ProbeRequest};
 use futures::StreamExt;
 use std::{
     sync::Arc,
@@ -15,6 +15,14 @@ use tokio::sync::Mutex;
 
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+}
+
+/// Publish a durable event to `fleet.event.*` (captured by the FLEET JetStream stream).
+/// Plain core publish (no reply subject) so it never shadows request/reply.
+async fn publish_event(nats: &async_nats::Client, subject: String, v: serde_json::Value) {
+    if let Ok(p) = serde_json::to_vec(&v) {
+        let _ = nats.publish(subject, p.into()).await;
+    }
 }
 
 #[derive(Clone)]
@@ -50,6 +58,8 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                     app.metrics.set_node(&node, true, overlay);
                     if recovery {
                         notify::event(&app.cfg, &format!("node {node} back UP")).await;
+                        publish_event(&app.nats, format!("fleet.event.status.{node}"),
+                            serde_json::json!({"node":node,"status":"up","ts":now()})).await;
                     }
                 }
             }
@@ -72,6 +82,53 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                 let downed = app.presence.lock().await.newly_down(now());
                 for node in downed {
                     notify::event(&app.cfg, &format!("node {node} DOWN (no heartbeat)")).await;
+                    publish_event(&app.nats, format!("fleet.event.status.{node}"),
+                        serde_json::json!({"node":node,"status":"down","ts":now()})).await;
+                }
+            }
+        });
+    }
+
+    // scheduled probes — gateway reachability from each up node (latency -> prometheus,
+    // failures -> fleet.event for durable history)
+    if cfg.probe_interval_secs > 0 {
+        let app = app.clone();
+        let interval = cfg.probe_interval_secs;
+        let target = cfg.probe_target.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval));
+            loop {
+                tick.tick().await;
+                let nodes: Vec<String> = app
+                    .presence
+                    .lock()
+                    .await
+                    .snapshot(now())
+                    .into_iter()
+                    .filter(|(_, up, _, _)| *up)
+                    .map(|(n, _, _, _)| n)
+                    .collect();
+                for node in nodes {
+                    let req = ProbeRequest {
+                        kind: ProbeKind::Ping,
+                        target: target.clone(),
+                        timeout_ms: 2000,
+                    };
+                    match dispatch::probe(&app.nats, &node, &req, 5).await {
+                        Ok(pr) => {
+                            app.metrics.set_probe(&node, &target, pr.ok, pr.latency_ms);
+                            if !pr.ok {
+                                publish_event(&app.nats, format!("fleet.event.probe_fail.{node}"),
+                                    serde_json::json!({"node":node,"target":target,"ts":now(),"detail":pr.detail})).await;
+                            }
+                        }
+                        Err(e) => {
+                            app.metrics.set_probe(&node, &target, false, 0);
+                            tracing::warn!(%node, %e, "scheduled probe failed");
+                            publish_event(&app.nats, format!("fleet.event.probe_fail.{node}"),
+                                serde_json::json!({"node":node,"target":target,"ts":now(),"detail":e.to_string()})).await;
+                        }
+                    }
                 }
             }
         });
