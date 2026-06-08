@@ -25,16 +25,27 @@ us system.@system[0].log_proto "udp"
 ne_if="$(uci -q get prometheus-node-exporter-lua.main.listen_interface || true)"
 us prometheus-node-exporter-lua.main.listen_interface lan
 
+# NTP: these routers have no RTC and busybox sysntpd won't step a huge boot offset
+# (seen up to ~45h). A 15-min one-shot step keeps clocks correct after every reboot.
+if ! grep -q 'ntpd -nq' /etc/crontabs/root 2>/dev/null; then
+  mkdir -p /etc/crontabs
+  echo '*/15 * * * * /usr/sbin/ntpd -nq -p 0.openwrt.pool.ntp.org >/dev/null 2>&1' >> /etc/crontabs/root
+  changed=1; log "added ntpd-step cron"
+fi
+
 # Layer-0 services
 enable_svc dawn
 enable_svc collectd
 enable_svc prometheus-node-exporter-lua
 enable_svc banip
 enable_svc umdns
+enable_svc cron
 
 uci commit
 # restart logd so log_ip takes effect (cheap, non-wifi)
 /etc/init.d/log restart 2>/dev/null || true
+# (re)load crontab so the ntpd-step entry takes effect (cheap, non-wifi)
+/etc/init.d/cron restart 2>/dev/null || true
 # restart node-exporter only if its listen interface changed (apply the LAN bind)
 [ "$ne_if" = lan ] || /etc/init.d/prometheus-node-exporter-lua restart 2>/dev/null || true
 log "baseline complete (changed=$changed)"
