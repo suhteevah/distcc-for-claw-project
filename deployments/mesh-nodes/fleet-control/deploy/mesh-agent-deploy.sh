@@ -22,11 +22,12 @@ TARGETS="${*:-$(all_nodes)}"
 rc=0
 for node in $TARGETS; do
   echo "=== $node ==="
-  push_file "$node" "$BIN" /usr/sbin/mesh-agent
+  # write to .new then mv — can't `cat >` over a RUNNING binary (ETXTBSY); rename is atomic + safe.
+  push_file "$node" "$BIN" /usr/sbin/mesh-agent.new
   printf 'MESH_AGENT_NODE=%s\nMESH_AGENT_NATS=%s\n' "$node" "$(nats_url "$node")" \
     | node_ssh "$node" 'cat > /etc/mesh-agent.env; chmod 600 /etc/mesh-agent.env'
   push_file "$node" "$FC/deploy/mesh-agent.init" /etc/init.d/mesh-agent
-  node_ssh "$node" 'chmod +x /usr/sbin/mesh-agent /etc/init.d/mesh-agent; /etc/init.d/mesh-agent enable; /etc/init.d/mesh-agent restart; sleep 2;
+  node_ssh "$node" 'chmod +x /usr/sbin/mesh-agent.new /etc/init.d/mesh-agent; mv /usr/sbin/mesh-agent.new /usr/sbin/mesh-agent; /etc/init.d/mesh-agent enable; /etc/init.d/mesh-agent restart; sleep 2;
     pid=$(pidof mesh-agent);
     if [ -n "$pid" ]; then echo "  '"$node"': mesh-agent up (pid $pid)"; else echo "  '"$node"': DOWN"; logread | grep mesh-agent | tail -5; fi'
   [ $? -eq 0 ] || rc=1
