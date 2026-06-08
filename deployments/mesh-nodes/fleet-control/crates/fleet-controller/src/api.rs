@@ -134,6 +134,28 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
         });
     }
 
+    // daily config backup (fires once shortly after start, then every interval)
+    if cfg.backup_interval_secs > 0 {
+        let app = app.clone();
+        let interval = cfg.backup_interval_secs;
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval));
+            loop {
+                tick.tick().await;
+                let nodes: Vec<String> = app
+                    .presence
+                    .lock()
+                    .await
+                    .snapshot(now())
+                    .into_iter()
+                    .filter(|(_, up, _, _)| *up)
+                    .map(|(n, _, _, _)| n)
+                    .collect();
+                crate::backup::run_backup(&app.nats, &app.cfg, &nodes, now()).await;
+            }
+        });
+    }
+
     // metrics server
     {
         let metrics = app.metrics.clone();
@@ -160,6 +182,7 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
         .route("/fleet/status", get(status))
         .route("/fleet/ctl/:node", post(ctl_node))
         .route("/fleet/probe/:node", post(probe_node))
+        .route("/fleet/backup", post(backup_now))
         .with_state(app.clone());
     let l = tokio::net::TcpListener::bind(("0.0.0.0", cfg.http_port)).await?;
     tracing::info!(port = cfg.http_port, "control API listening");
@@ -172,6 +195,20 @@ async fn status(State(a): State<App>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "nodes": snap.iter().map(|(n, up, ts, _)| serde_json::json!({"node":n,"up":up,"last_seen":ts})).collect::<Vec<_>>()
     }))
+}
+
+async fn backup_now(State(a): State<App>) -> Json<serde_json::Value> {
+    let nodes: Vec<String> = a
+        .presence
+        .lock()
+        .await
+        .snapshot(now())
+        .into_iter()
+        .filter(|(_, up, _, _)| *up)
+        .map(|(n, _, _, _)| n)
+        .collect();
+    let (n, committed) = crate::backup::run_backup(&a.nats, &a.cfg, &nodes, now()).await;
+    Json(serde_json::json!({"nodes_backed_up": n, "committed": committed}))
 }
 
 async fn ctl_node(

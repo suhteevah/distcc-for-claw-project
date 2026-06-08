@@ -1,5 +1,6 @@
 mod api;
 mod audit;
+mod backup;
 mod config;
 mod dispatch;
 mod metrics;

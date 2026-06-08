@@ -11,6 +11,8 @@ pub struct ControllerConfig {
     pub notify_cmd: Option<String>,
     pub probe_interval_secs: u64, // 0 = scheduled probes disabled
     pub probe_target: String,
+    pub backup_dir: String,
+    pub backup_interval_secs: u64, // 0 = scheduled backup disabled (manual still works)
 }
 impl ControllerConfig {
     pub fn from_env() -> Result<Self> {
@@ -29,6 +31,9 @@ impl ControllerConfig {
             notify_cmd: get("FLEET_NOTIFY_CMD"),
             probe_interval_secs: num("FLEET_PROBE_INTERVAL_SECS", 60),
             probe_target: get("FLEET_PROBE_TARGET").unwrap_or_else(|| "192.168.168.168".into()),
+            backup_dir: get("FLEET_BACKUP_DIR")
+                .unwrap_or_else(|| "/opt/openclaw/fleet-config-backup".into()),
+            backup_interval_secs: num("FLEET_BACKUP_INTERVAL_SECS", 86400),
         })
     }
 }
