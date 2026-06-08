@@ -44,12 +44,13 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
         tokio::spawn(async move {
             while let Some(msg) = sub.next().await {
                 if let Ok(hb) = serde_json::from_slice::<Heartbeat>(&msg.payload) {
-                    let was_up = app.presence.lock().await.is_up(&hb.node, now());
-                    app.metrics.set_node(&hb.node, true, hb.overlay_free_mb);
-                    if !was_up {
-                        notify::event(&app.cfg, &format!("node {} back UP", hb.node)).await;
+                    let node = hb.node.clone();
+                    let overlay = hb.overlay_free_mb;
+                    let recovery = app.presence.lock().await.observe(hb, now());
+                    app.metrics.set_node(&node, true, overlay);
+                    if recovery {
+                        notify::event(&app.cfg, &format!("node {node} back UP")).await;
                     }
-                    app.presence.lock().await.observe(hb, now());
                 }
             }
         });
@@ -62,12 +63,15 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
             loop {
                 tick.tick().await;
+                // refresh all gauges
                 let snap = app.presence.lock().await.snapshot(now());
-                for (node, up, _ts, hb) in snap {
-                    app.metrics.set_node(&node, up, hb.overlay_free_mb);
-                    if !up {
-                        notify::event(&app.cfg, &format!("node {node} DOWN (no heartbeat)")).await;
-                    }
+                for (node, up, _ts, hb) in &snap {
+                    app.metrics.set_node(node, *up, hb.overlay_free_mb);
+                }
+                // edge-triggered DOWN alerts (once per outage)
+                let downed = app.presence.lock().await.newly_down(now());
+                for node in downed {
+                    notify::event(&app.cfg, &format!("node {node} DOWN (no heartbeat)")).await;
                 }
             }
         });

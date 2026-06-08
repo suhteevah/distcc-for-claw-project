@@ -8,6 +8,7 @@ pub struct ControllerConfig {
     pub down_after_secs: u64,
     pub audit_path: String,
     pub notify_url: Option<String>,
+    pub notify_cmd: Option<String>,
 }
 impl ControllerConfig {
     pub fn from_env() -> Result<Self> {
@@ -23,6 +24,7 @@ impl ControllerConfig {
             audit_path: get("FLEET_AUDIT_PATH")
                 .unwrap_or_else(|| "/var/log/fleet-controller-audit.jsonl".into()),
             notify_url: get("FLEET_NOTIFY_URL"),
+            notify_cmd: get("FLEET_NOTIFY_CMD"),
         })
     }
 }
