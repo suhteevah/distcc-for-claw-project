@@ -16,6 +16,7 @@ pub enum Verb {
     ProbeDns,
     ProbeHttp,
     ExecRaw,
+    ConfigDump,
 }
 impl Verb {
     pub fn parse(s: &str) -> Option<Verb> {
@@ -36,6 +37,7 @@ impl Verb {
             "probe.dns" => ProbeDns,
             "probe.http" => ProbeHttp,
             "exec.raw" => ExecRaw,
+            "config.dump" => ConfigDump,
             _ => return None,
         })
     }
@@ -68,6 +70,13 @@ mod tests {
     #[test]
     fn unknown_verb_rejected() {
         assert!(Verb::parse("rm.rf").is_none());
+    }
+    #[test]
+    fn config_dump_parses_and_is_readonly() {
+        let v = Verb::parse("config.dump").expect("config.dump should parse");
+        assert!(!v.is_mutating());
+        assert!(!v.is_raw());
+        assert!(!v.needs_reboot_gate());
     }
     #[test]
     fn classification() {

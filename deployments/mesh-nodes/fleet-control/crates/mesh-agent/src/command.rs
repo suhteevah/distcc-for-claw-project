@@ -60,6 +60,7 @@ pub fn plan(c: &Command, g: &Gates) -> Plan {
         ),
         WifiReload => Plan::Run(vec!["wifi".into(), "reload".into()]),
         NetReload => Plan::Run(vec!["/etc/init.d/network".into(), "reload".into()]),
+        ConfigDump => Plan::Run(vec!["uci".into(), "export".into()]),
         PkgAdd => match need("name") {
             Some(n) => Plan::Run(vec!["apk".into(), "add".into(), n]),
             None => Plan::Reject("pkg.add needs args.name".into()),
@@ -169,6 +170,13 @@ mod tests {
             &gates(false, false),
         ) {
             Plan::Run(a) => assert_eq!(a, vec!["uci", "set", "wireless.@wifi-iface[0].disabled=0"]),
+            _ => panic!(),
+        }
+    }
+    #[test]
+    fn config_dump_runs_uci_export() {
+        match plan(&cmd("config.dump", json!({}), false), &gates(false, false)) {
+            Plan::Run(a) => assert_eq!(a, vec!["uci", "export"]),
             _ => panic!(),
         }
     }
