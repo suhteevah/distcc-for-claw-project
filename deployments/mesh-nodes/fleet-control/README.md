@@ -62,15 +62,20 @@ bash fleet-control/deploy/mesh-agent-deploy.sh            # all nodes (or pass n
 - systemd `openclaw-fleet-controller.service`; direct NATS client (failover .144/.145/.146).
 - **Presence:** subscribes `fleet.heartbeat.*`, stamps **its own receive time** (node NTP skew
   seen up to ~25 min would otherwise break down-detection), marks down after `FLEET_DOWN_AFTER_SECS` (90).
-- **Metrics** (`:9094/metrics`): `mesh_node_up{node}`, `mesh_node_overlay_free_mb{node}` →
+- **Metrics** (`:9094/metrics`): `mesh_node_up{node}`, `mesh_node_overlay_free_mb{node}`,
+  `mesh_probe_latency_ms{node,target}`, `mesh_probe_ok{node,target}` →
   cnc prometheus job `fleet-controller` (`host.containers.internal:9094`).
+- **Scheduled probes:** every `FLEET_PROBE_INTERVAL_SECS` (60) the controller pings each
+  up-node's path to `FLEET_PROBE_TARGET` (gateway) → latency/ok gauges; failures publish to
+  `fleet.event.probe_fail.<node>`.
 - **Dispatch API** (`:9096`):
   - `GET  /fleet/status` — presence JSON
   - `POST /fleet/ctl/<node>`   `{verb,args,confirm?}` → agent reply
   - `POST /fleet/probe/<node>` `{kind,target,timeout_ms?}` → probe reply
-- **Surfacing:** events logged (journald) + `mesh_node_up` gauge (alert via prometheus on `==0`).
-  Optional webhook via `FLEET_NOTIFY_URL`. (No openclaw-core notify HTTP endpoint exists; a
-  Telegram/Discord bridge is a fast-follow.)
+- **Surfacing:** node down/up + probe-fail events are **edge-triggered** (one alert per
+  transition — `FLEET_DOWN_AFTER_SECS` MUST exceed the 30s heartbeat or nodes flap; default 90).
+  Alerts → **Telegram** via `FLEET_NOTIFY_CMD` (the cnc `notify-telegram.sh`, msg as argv arg)
+  and/or `FLEET_NOTIFY_URL` webhook; always logged. Durable history → `fleet.event.*` (FLEET stream).
 - Config in `/etc/fleet-controller.env` (600, holds the token). Port note: **9095 is prometheus**
   on cnc → control API uses **9096**.
 
@@ -89,9 +94,13 @@ curl -s -XPOST localhost:9096/fleet/probe/mesh-ap-07 -d '{"kind":"ping","target"
 curl -s -XPOST localhost:9096/fleet/ctl/mesh-ap-07   -d '{"verb":"pkg.add","args":{"name":"tcpdump"},"confirm":true}'
 ```
 
-## Known follow-ups
-- **Node NTP skew** (ap-02 ~25 min, ap-07 ~2 min behind cnc) — fleet hygiene; presence is already
-  immune (receive-time stamped) but worth fixing the nodes' `sysntpd`.
-- Scheduled/periodic probes + JetStream history capture (the spec's fast-follow).
-- Telegram/Discord alert bridge for `notify::event`.
+## Fast-follows (DONE 2026-06-07)
+- ✅ **Node NTP skew** — baseline now installs a 15-min `ntpd -nq` step cron (routers have no RTC;
+  busybox sysntpd won't step a huge boot offset, seen up to ~45h). All 7 stepped + aligned.
+- ✅ **Scheduled probes + JetStream history** — gateway latency gauges + `fleet.event.*` event log.
+- ✅ **Telegram alerts** — edge-triggered down/up via `FLEET_NOTIFY_CMD` → `notify-telegram.sh`.
+
+## Still open
+- `exec.raw`/`reboot` are off by default per node (enable via `/etc/mesh-agent.env` env gates).
 - Build is on cnc (Windows host's mingw dlltool can't handle the spaced repo path).
+- P4 (rsync/restic backup sinks, content cache) — next mesh infra-tier phase.
