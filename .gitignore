@@ -54,3 +54,14 @@ lpt9
 .secrets
 .secrets.local
 **/.tokens.env
+
+# Added by uploader (secret-leak hardening, 2026-04-18)
+VOXCLAW.md
+scratch/
+*.local
+id_rsa
+id_ed25519
+*-key
+.claude/.credentials.json
+C:Users*
+C:Windows*
