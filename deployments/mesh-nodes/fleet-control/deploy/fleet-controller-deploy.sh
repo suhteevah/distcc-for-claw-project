@@ -15,8 +15,9 @@ cat > /etc/fleet-controller.env <<EOF
 FLEET_NATS=nats://${TOKEN}@192.168.168.144:4222,nats://${TOKEN}@192.168.168.145:4222,nats://${TOKEN}@192.168.168.146:4222
 FLEET_HTTP_PORT=9096
 FLEET_METRICS_PORT=9094
-# MUST stay > the agent heartbeat interval (30s) or nodes flap. 90 = 3 missed beats.
-FLEET_DOWN_AFTER_SECS=90
+# MUST stay > the agent heartbeat interval (30s). 180 = 6 missed beats — rides out
+# the ~2-min mesh/NATS delivery blips that caused false full-fleet flaps (2026-06-08).
+FLEET_DOWN_AFTER_SECS=180
 # node down/up alerts -> Telegram via the existing cnc helper (msg passed as argv arg)
 FLEET_NOTIFY_CMD=/opt/nightdrive/tools/notify-telegram.sh
 # scheduled probes: ping each up node's path to the gateway every 60s

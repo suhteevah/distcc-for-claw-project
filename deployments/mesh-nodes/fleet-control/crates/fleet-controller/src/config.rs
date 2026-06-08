@@ -24,7 +24,7 @@ impl ControllerConfig {
             nats_url: get("FLEET_NATS").ok_or_else(|| anyhow!("missing FLEET_NATS"))?,
             http_port: num("FLEET_HTTP_PORT", 9095) as u16,
             metrics_port: num("FLEET_METRICS_PORT", 9094) as u16,
-            down_after_secs: num("FLEET_DOWN_AFTER_SECS", 90),
+            down_after_secs: num("FLEET_DOWN_AFTER_SECS", 180),
             audit_path: get("FLEET_AUDIT_PATH")
                 .unwrap_or_else(|| "/var/log/fleet-controller-audit.jsonl".into()),
             notify_url: get("FLEET_NOTIFY_URL"),
@@ -50,7 +50,7 @@ mod tests {
         let c = ControllerConfig::from_env_with(get).unwrap();
         assert_eq!(c.http_port, 9095);
         assert_eq!(c.metrics_port, 9094);
-        assert_eq!(c.down_after_secs, 90);
+        assert_eq!(c.down_after_secs, 180);
     }
     #[test]
     fn missing_nats_errors() {

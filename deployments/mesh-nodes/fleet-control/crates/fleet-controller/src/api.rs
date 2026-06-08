@@ -56,7 +56,9 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                     let overlay = hb.overlay_free_mb;
                     let recovery = app.presence.lock().await.observe(hb, now());
                     app.metrics.set_node(&node, true, overlay);
-                    if recovery {
+                    // Only announce recovery for nodes that had a per-node DOWN alert.
+                    // Suppressed (visibility-blip) recoveries are silent; None = nothing.
+                    if matches!(recovery, crate::presence::Recovery::Node) {
                         notify::event(&app.cfg, &format!("node {node} back UP")).await;
                         publish_event(&app.nats, format!("fleet.event.status.{node}"),
                             serde_json::json!({"node":node,"status":"up","ts":now()})).await;
@@ -73,17 +75,45 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
             loop {
                 tick.tick().await;
+                let t = now();
                 // refresh all gauges
-                let snap = app.presence.lock().await.snapshot(now());
+                let snap = app.presence.lock().await.snapshot(t);
                 for (node, up, _ts, hb) in &snap {
                     app.metrics.set_node(node, *up, hb.overlay_free_mb);
                 }
-                // edge-triggered DOWN alerts (once per outage)
-                let downed = app.presence.lock().await.newly_down(now());
-                for node in downed {
-                    notify::event(&app.cfg, &format!("node {node} DOWN (no heartbeat)")).await;
-                    publish_event(&app.nats, format!("fleet.event.status.{node}"),
-                        serde_json::json!({"node":node,"status":"down","ts":now()})).await;
+                // down-detection with an all-nodes-down guard: a mass simultaneous silence
+                // is a controller/mesh visibility blip, not N independent node outages.
+                let (pending, known) = {
+                    let p = app.presence.lock().await;
+                    (p.pending_down(t), p.known_count())
+                };
+                if !pending.is_empty() {
+                    let mass = known >= 4 && pending.len() >= (known + 1) / 2;
+                    app.presence.lock().await.set_alert(&pending, mass);
+                    if mass {
+                        let msg = format!(
+                            "fleet visibility blip: {}/{} nodes went silent at once — likely a NATS/mesh transient, NOT a node outage (nodes auto-recover; see /fleet/status)",
+                            pending.len(),
+                            known
+                        );
+                        notify::event(&app.cfg, &msg).await;
+                        publish_event(
+                            &app.nats,
+                            "fleet.event.visibility".to_string(),
+                            serde_json::json!({"status":"blip","silent":pending.len(),"known":known,"ts":t}),
+                        )
+                        .await;
+                    } else {
+                        for node in &pending {
+                            notify::event(&app.cfg, &format!("node {node} DOWN (no heartbeat)")).await;
+                            publish_event(
+                                &app.nats,
+                                format!("fleet.event.status.{node}"),
+                                serde_json::json!({"node":node,"status":"down","ts":t}),
+                            )
+                            .await;
+                        }
+                    }
                 }
             }
         });
