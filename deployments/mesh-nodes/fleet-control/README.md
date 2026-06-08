@@ -94,6 +94,23 @@ curl -s -XPOST localhost:9096/fleet/probe/mesh-ap-07 -d '{"kind":"ping","target"
 curl -s -XPOST localhost:9096/fleet/ctl/mesh-ap-07   -d '{"verb":"pkg.add","args":{"name":"tcpdump"},"confirm":true}'
 ```
 
+## Config backup (P4)
+
+Daily git-tracked snapshot of every node's live config to cnc (DR / drift / audit) — reuses P3,
+no node storage needed.
+
+- **`config.dump` verb** (mesh-agent): read-only, runs `uci export` (restorable via `uci import`).
+- **Controller backup task:** every `FLEET_BACKUP_INTERVAL_SECS` (86400) + on `POST /fleet/backup`,
+  pulls `config.dump` from each up-node, **redacts** secrets (`option key`/`option password` →
+  `<redacted>`; the Home_EXT PSK never lands in git), writes `<node>.uci`, and `git commit`s
+  (only on drift) to `FLEET_BACKUP_DIR` (`/opt/openclaw/fleet-config-backup`) — **local-only repo**.
+- Down nodes are skipped (their last snapshot persists in git).
+
+```bash
+curl -s -XPOST localhost:9096/fleet/backup            # {"nodes_backed_up":7,"committed":true}
+git -C /opt/openclaw/fleet-config-backup log --oneline
+```
+
 ## Fast-follows (DONE 2026-06-07)
 - ✅ **Node NTP skew** — baseline now installs a 15-min `ntpd -nq` step cron (routers have no RTC;
   busybox sysntpd won't step a huge boot offset, seen up to ~45h). All 7 stepped + aligned.

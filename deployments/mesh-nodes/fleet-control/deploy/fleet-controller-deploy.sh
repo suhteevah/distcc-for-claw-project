@@ -22,6 +22,9 @@ FLEET_NOTIFY_CMD=/opt/nightdrive/tools/notify-telegram.sh
 # scheduled probes: ping each up node's path to the gateway every 60s
 FLEET_PROBE_INTERVAL_SECS=60
 FLEET_PROBE_TARGET=192.168.168.168
+# daily fleet config backup (git-tracked, local-only) to cnc
+FLEET_BACKUP_DIR=/opt/openclaw/fleet-config-backup
+FLEET_BACKUP_INTERVAL_SECS=86400
 EOF
 chmod 600 /etc/fleet-controller.env
 
