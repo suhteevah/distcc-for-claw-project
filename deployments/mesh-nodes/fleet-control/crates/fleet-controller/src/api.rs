@@ -17,6 +17,11 @@ fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
 }
 
+/// Grace beyond `down_after` before a silence is alerted. Lets a staggered wave of
+/// simultaneous silences fully land so the mass-blip guard sees the whole wave (one blip)
+/// instead of leaking per-node DOWN alerts for the early-crossing nodes.
+const ALERT_GRACE_SECS: u64 = 45;
+
 /// Publish a durable event to `fleet.event.*` (captured by the FLEET JetStream stream).
 /// Plain core publish (no reply subject) so it never shadows request/reply.
 async fn publish_event(nats: &async_nats::Client, subject: String, v: serde_json::Value) {
@@ -54,8 +59,11 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                 if let Ok(hb) = serde_json::from_slice::<Heartbeat>(&msg.payload) {
                     let node = hb.node.clone();
                     let overlay = hb.overlay_free_mb;
+                    let peers = hb.mesh_peers;
+                    let signals = hb.mesh_signals.clone();
                     let recovery = app.presence.lock().await.observe(hb, now());
                     app.metrics.set_node(&node, true, overlay);
+                    app.metrics.set_mesh(&node, peers, &signals);
                     // Only announce recovery for nodes that had a per-node DOWN alert.
                     // Suppressed (visibility-blip) recoveries are silent; None = nothing.
                     if matches!(recovery, crate::presence::Recovery::Node) {
@@ -80,27 +88,28 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                 let snap = app.presence.lock().await.snapshot(t);
                 for (node, up, _ts, hb) in &snap {
                     app.metrics.set_node(node, *up, hb.overlay_free_mb);
+                    app.metrics.set_mesh(node, hb.mesh_peers, &hb.mesh_signals);
                 }
                 // down-detection with an all-nodes-down guard: a mass simultaneous silence
                 // is a controller/mesh visibility blip, not N independent node outages.
-                let (pending, known) = {
+                let (pending, down_now, known) = {
                     let p = app.presence.lock().await;
-                    (p.pending_down(t), p.known_count())
+                    (p.pending_down(t, ALERT_GRACE_SECS), p.down_count(t), p.known_count())
                 };
                 if !pending.is_empty() {
-                    let mass = known >= 4 && pending.len() >= (known + 1) / 2;
+                    let mass = known >= 4 && down_now >= (known + 1) / 2;
                     app.presence.lock().await.set_alert(&pending, mass);
                     if mass {
                         let msg = format!(
                             "fleet visibility blip: {}/{} nodes went silent at once — likely a NATS/mesh transient, NOT a node outage (nodes auto-recover; see /fleet/status)",
-                            pending.len(),
+                            down_now,
                             known
                         );
                         notify::event(&app.cfg, &msg).await;
                         publish_event(
                             &app.nats,
                             "fleet.event.visibility".to_string(),
-                            serde_json::json!({"status":"blip","silent":pending.len(),"known":known,"ts":t}),
+                            serde_json::json!({"status":"blip","silent":down_now,"known":known,"ts":t}),
                         )
                         .await;
                     } else {
