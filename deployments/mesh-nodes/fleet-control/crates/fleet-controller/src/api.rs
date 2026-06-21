@@ -40,7 +40,14 @@ struct App {
 
 pub async fn run(cfg: ControllerConfig) -> Result<()> {
     let nats = nats::connect(&cfg.nats_url).await?;
-    tracing::info!("connected to NATS cluster");
+    // NB: never log cfg.nats_url — it carries the cluster token.
+    tracing::info!(
+        down_after_secs = cfg.down_after_secs,
+        alert_grace_secs = ALERT_GRACE_SECS,
+        probe_interval_secs = cfg.probe_interval_secs,
+        backup_interval_secs = cfg.backup_interval_secs,
+        "connected to NATS cluster; controller config loaded"
+    );
     let app = App {
         nats: nats.clone(),
         presence: Arc::new(Mutex::new(Presence::new(cfg.down_after_secs))),
@@ -54,6 +61,7 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
         let mut sub = nats
             .subscribe(fleet_proto::subjects::HEARTBEAT_WILDCARD.to_string())
             .await?;
+        tracing::info!("heartbeat ingest subscribed to fleet.heartbeat.>");
         tokio::spawn(async move {
             while let Some(msg) = sub.next().await {
                 if let Ok(hb) = serde_json::from_slice::<Heartbeat>(&msg.payload) {
@@ -61,9 +69,11 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                     let overlay = hb.overlay_free_mb;
                     let peers = hb.mesh_peers;
                     let signals = hb.mesh_signals.clone();
+                    let worst_sig = signals.iter().min().copied().unwrap_or(0);
                     let recovery = app.presence.lock().await.observe(hb, now());
                     app.metrics.set_node(&node, true, overlay);
                     app.metrics.set_mesh(&node, peers, &signals);
+                    tracing::debug!(node = %node, peers, worst_signal_dbm = worst_sig, overlay_mb = overlay, recovery = ?recovery, "heartbeat ingested");
                     // Only announce recovery for nodes that had a per-node DOWN alert.
                     // Suppressed (visibility-blip) recoveries are silent; None = nothing.
                     if matches!(recovery, crate::presence::Recovery::Node) {
@@ -86,6 +96,7 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                 let t = now();
                 // refresh all gauges
                 let snap = app.presence.lock().await.snapshot(t);
+                let up_count = snap.iter().filter(|(_, up, _, _)| *up).count();
                 for (node, up, _ts, hb) in &snap {
                     app.metrics.set_node(node, *up, hb.overlay_free_mb);
                     app.metrics.set_mesh(node, hb.mesh_peers, &hb.mesh_signals);
@@ -96,8 +107,10 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                     let p = app.presence.lock().await;
                     (p.pending_down(t, ALERT_GRACE_SECS), p.down_count(t), p.known_count())
                 };
+                tracing::debug!(up = up_count, total = snap.len(), silent_past_down = down_now, pending_alert = pending.len(), "down-sweep");
                 if !pending.is_empty() {
                     let mass = known >= 4 && down_now >= (known + 1) / 2;
+                    tracing::info!(pending = ?pending, down_now, known, mass, grace_secs = ALERT_GRACE_SECS, "down-sweep decision: {}", if mass { "MASS visibility blip -> suppress per-node" } else { "per-node DOWN alert(s)" });
                     app.presence.lock().await.set_alert(&pending, mass);
                     if mass {
                         let msg = format!(
@@ -156,6 +169,7 @@ pub async fn run(cfg: ControllerConfig) -> Result<()> {
                     match dispatch::probe(&app.nats, &node, &req, 5).await {
                         Ok(pr) => {
                             app.metrics.set_probe(&node, &target, pr.ok, pr.latency_ms);
+                            tracing::debug!(node = %node, target = %target, ok = pr.ok, latency_ms = pr.latency_ms, "probe result");
                             if !pr.ok {
                                 publish_event(&app.nats, format!("fleet.event.probe_fail.{node}"),
                                     serde_json::json!({"node":node,"target":target,"ts":now(),"detail":pr.detail})).await;
